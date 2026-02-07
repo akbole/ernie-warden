@@ -1,11 +1,11 @@
 import os
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import sqlite3
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
+TOKEN = os.getenv("BOT_TOKEN")
+# 👇 НОВАЯ СТРОКА (ПРАВИЛЬНО)
+DB_NAME = "/data/bot_database.db" 
 )
 from telegram.ext import (
     ApplicationBuilder,
