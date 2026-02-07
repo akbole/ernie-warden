@@ -1,150 +1,105 @@
 import os
-import random
-import asyncio
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# ====== CONFIG ======
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")
 
-# ====== GAME STATE ======
-users_state = {}   # user_id -> state
-users_trust = {}   # user_id -> trust %
+# -------------------------
+# ПАМЯТЬ ИГРОКОВ (MVP)
+# -------------------------
+users = {}  # user_id -> {state, trust}
 
 STATE_LOBBY = "lobby"
 STATE_WORKING = "working"
+STATE_ELEVATOR = "elevator"
 
-# ====== ERNIE PHRASES ======
-ERNIE_LINES = [
-    "Терпение — тоже навык.",
-    "Система не любит суету.",
-    "Ты движешься быстрее большинства.",
-    "Наблюдение продолжается.",
-    "Не все доходят до следующего уровня.",
-]
-
-def ernie():
-    return random.choice(ERNIE_LINES)
-
-def get_trust(user_id):
-    return users_trust.get(user_id, 1)
-
-def add_trust(user_id, value=1):
-    users_trust[user_id] = get_trust(user_id) + value
-
-# ====== /start ======
+# -------------------------
+# /start
+# -------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
-    if users_state.get(user_id) == STATE_WORKING:
-        await update.message.reply_text(
-            "⏳ Процесс уже запущен.\nСистема не принимает дубли."
-        )
-        return
+    if user_id not in users:
+        users[user_id] = {
+            "state": STATE_LOBBY,
+            "trust": 0
+        }
 
-    users_state[user_id] = STATE_LOBBY
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👀 Осмотреться", callback_data="look")]
-    ])
+    keyboard = [
+        [InlineKeyboardButton("👀 Осмотреться", callback_data="look")],
+        [InlineKeyboardButton("🛗 Подойти к лифту", callback_data="elevator")]
+    ]
 
     await update.message.reply_text(
         "🔌 Соединение установлено.\n\n"
         "Не переживай. Ты ничего не сломал.\n"
         "Ты находишься в Лобби.\n\n"
         "Что будешь делать?",
-        reply_markup=keyboard
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ====== BUTTON HANDLER ======
+# -------------------------
+# КНОПКИ
+# -------------------------
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     user_id = query.from_user.id
-    data = query.data
+    user = users[user_id]
 
-    # --- LOOK ---
-    if data == "look":
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬆️ Подойти к лифту", callback_data="elevator")]
-        ])
+    # 👀 ОСМОТР
+    if query.data == "look":
+        keyboard = [
+            [InlineKeyboardButton("🛠 Выполнить задание", callback_data="work")],
+            [InlineKeyboardButton("🛗 Подойти к лифту", callback_data="elevator")]
+        ]
 
         await query.edit_message_text(
-            "Ты осматриваешься.\n\n"
-            "Бетонные стены.\n"
-            "Пластиковый стул.\n"
-            "Табло мигает.\n\n"
-            f"Доверие: {get_trust(user_id)}%",
-            reply_markup=keyboard
+            "Ты осматриваешься.\n"
+            "Бетонные стены. Пластиковые стулья.\n\n"
+            "Эрни: «Не трать ресурсы зря.»",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    # --- ELEVATOR ---
-    elif data == "elevator":
-        if get_trust(user_id) < 5:
+    # 🛠 РАБОТА
+    elif query.data == "work":
+        user["state"] = STATE_WORKING
+        user["trust"] += 1
+
+        await query.edit_message_text(
+            "🧪 Задача принята.\n"
+            "📊 Анализ данных...\n\n"
+            "Эрни: «Терпение — тоже навык.»\n\n"
+            f"✅ Доверие: {user['trust']}%"
+        )
+
+    # 🛗 ЛИФТ
+    elif query.data == "elevator":
+        if user["trust"] < 50:
             await query.edit_message_text(
-                "🔒 Лифт не реагирует.\n\n"
-                "Требуется доверие: 5%\n"
-                f"Текущее: {get_trust(user_id)}%\n\n"
-                "Система предлагает альтернативу."
+                "🛑 ДОСТУП ЗАПРЕЩЁН\n\n"
+                f"Текущий уровень доверия: {user['trust']}%\n"
+                "Требуется: 50%\n\n"
+                "Эрни: «Ты ещё не готов.»"
+            )
+        else:
+            user["state"] = STATE_ELEVATOR
+            await query.edit_message_text(
+                "🛗 Лифт активирован...\n"
+                "Этажи: 1 → 2 → 3\n\n"
+                "🔓 ДОСТУП ПОЛУЧЕН\n\n"
+                "Добро пожаловать выше."
             )
 
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🛠 Выполнить задание", callback_data="work")]
-            ])
-            await query.edit_message_reply_markup(reply_markup=keyboard)
-            return
-
-        await query.edit_message_text(
-            "🟢 Лифт активен.\n\n"
-            "Ты получил доступ.\n"
-            "Продолжение следует…"
-        )
-
-    # --- WORK ---
-    elif data == "work":
-        if users_state.get(user_id) == STATE_WORKING:
-            return
-
-        users_state[user_id] = STATE_WORKING
-
-        await query.edit_message_text(
-            "📡 Задача принята.\n"
-            "🔍 Анализ данных...\n\n"
-            "Пожалуйста, подожди."
-        )
-
-        # фоновая задержка
-        asyncio.create_task(finish_work(query, user_id))
-
-# ====== BACKGROUND TASK ======
-async def finish_work(query, user_id):
-    await asyncio.sleep(5)
-
-    add_trust(user_id, 1)
-    users_state[user_id] = STATE_LOBBY
-
-    await query.message.reply_text(
-        f"✅ Готово.\n"
-        f"Доверие +1%\n"
-        f"Текущий уровень: {get_trust(user_id)}%\n\n"
-        f"Эрни: «{ernie()}»"
-    )
-
-# ====== RUN ======
+# -------------------------
+# ЗАПУСК
+# -------------------------
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(buttons))
 
-    print("🟢 WARDEN ONLINE")
+    print("🟢 WARDEN запущен")
     app.run_polling()
