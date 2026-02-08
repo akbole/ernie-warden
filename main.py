@@ -11,7 +11,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 # ⚙️ КОНФИГУРАЦИЯ (Из config.py)
 # ==========================================
 # Твой токен из BotFather
-BOT_TOKEN = os.getenv('BOT_TOKEN', '7933434246:AAErOnLbmRoQrVWnwlnq_Wa7pWiYFAYE7P8')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8576970896:AAEYJTWDVaQ1ELAg1PGoWrDQJB7RTr5KXRc')
 DATABASE_NAME = 'ernie.db'
 MAX_ENERGY = 10
 ENERGY_RECOVERY_HOURS = 2
