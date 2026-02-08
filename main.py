@@ -69,13 +69,28 @@ async def floor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     floor = user['current_floor']
     theme = FLOOR_THEMES.get(floor, {"name": "НЕИЗВЕСТНАЯ ЗОНА", "emoji": "❓"})
     
+    # === НОВОЕ: ССЫЛКИ НА КАРТИНКИ ===
+    # Сюда можно добавить ссылки для каждого этажа
+    image_url = ""
+    if floor <= 10:
+        image_url = "https://i.imgur.com/M6k8s2S.jpeg" # Бункер
+    elif floor >= 71 and floor <= 90:
+        image_url = "https://i.imgur.com/8Q9qXqB.jpeg" # Сад
+    # ================================
+
     keyboard = [[InlineKeyboardButton("🛠 Выполнить задание (-1 Энергия)", callback_data='work')]]
     
-    await update.message.reply_text(
+    caption = (
         f"{theme['emoji']} ЭТАЖ {floor}: {theme['name']}\n\n"
         f"ЭРНИ: Система требует обслуживания.\n\n"
-        f"⚡ {user['energy']}/10  |  🏆 {user['trust_level']}%",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        f"⚡ {user['energy']}/10  |  🏆 {user['trust_level']}%"
+    )
+
+    # Если есть картинка - шлем фото, если нет - текст
+    if image_url:
+        await update.message.reply_photo(photo=image_url, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard))
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
