@@ -1,168 +1,131 @@
+import logging
 import sqlite3
+import json
 import random
 import os
-import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-# ========== КОНФИГУРАЦИЯ ==========
-# ⚠️ ВСТАВЬ СВОЙ ТОКЕН ТУТ
-BOT_TOKEN = "8576970896:AAEYJTWDVaQ1ELAg1PGoWrDQJB7RTr5KXRc"
-DB_NAME = "ernie_database.db"
-WORK_COOLDOWN = 15  # секунд между заданиями
+# ==========================================
+# ⚙️ КОНФИГУРАЦИЯ (Из config.py)
+# ==========================================
+# Твой токен из BotFather
+BOT_TOKEN = os.getenv('BOT_TOKEN', '7933434246:AAErOnLbmRoQrVWnwlnq_Wa7pWiYFAYE7P8')
+DATABASE_NAME = 'ernie.db'
+MAX_ENERGY = 10
+ENERGY_RECOVERY_HOURS = 2
+MAX_FLOORS = 100
 
-# Ссылки на картинки (вставь свои ссылки после загрузки на Imgur)
-IMG_LINKS = {
-    1: "https://i.imgur.com/your_bunker.jpg",
-    5: "https://i.imgur.com/your_bionic_garden.jpg" # Та самая картинка с арками!
+# Ссылки на твои красивые картинки (Imgur)
+LOCATION_IMAGES = {
+    "bionic": "https://i.imgur.com/your_bionic_image.jpg", # Замени на свою прямую ссылку
+    "bunker": "https://i.imgur.com/your_bunker_image.jpg"
 }
 
-# ========== ТЕМЫ ЭТАЖЕЙ ==========
+# ==========================================
+# 🎨 ТЕМЫ ЭТАЖЕЙ (Из floor_themes.py)
+# ==========================================
 FLOOR_THEMES = {
-    1: {"name": "БЕТОННЫЙ БУНКЕР", "emoji": "🔧", "trust_needed": 0},
-    2: {"name": "ПРОМЫШЛЕННЫЙ ЦЕХ", "emoji": "⚡", "trust_needed": 10},
-    3: {"name": "ХАЙ-ТЕК ЛАБОРАТОРИЯ", "emoji": "🔬", "trust_needed": 25},
-    4: {"name": "КИБЕРПАНК-ЛОФТ", "emoji": "🌃", "trust_needed": 50},
-    5: {"name": "БИОНИЧЕСКИЙ САД", "emoji": "🌿", "trust_needed": 75},
-    6: {"name": "ТРАНСЦЕНДЕНТНОЕ", "emoji": "✨", "trust_needed": 100}
+    "bunker": {"range": (1, 10), "name": "БЕТОННЫЙ БУНКЕР", "emoji": "🔧", "top": "╔════════════╗", "bot": "╚════════════╝"},
+    "industrial": {"range": (11, 30), "name": "ПРОМЫШЛЕННЫЙ ЦЕХ", "emoji": "⚡", "top": "▬▬▬▬▬▬▬▬▬▬", "bot": "▬▬▬▬▬▬▬▬▬▬"},
+    "laboratory": {"range": (31, 50), "name": "ЛАБОРАТОРИЯ", "emoji": "🔬", "top": "━━━━━━━━━━━━", "bot": "━━━━━━━━━━━━"},
+    "cyberpunk": {"range": (51, 70), "name": "КИБЕРПАНК-ЛОФТ", "emoji": "🌃", "top": "┏━━━━━━━━━━━━┓", "bot": "┗━━━━━━━━━━━━┛"},
+    "bionic": {"range": (71, 90), "name": "БИОНИЧЕСКИЙ САД", "emoji": "🌿", "top": "╭────────────╮", "bot": "╰────────────╯"},
+    "transcendent": {"range": (91, 100), "name": "ТРАНСЦЕНДЕНТНОЕ", "emoji": "✨", "top": "════════════", "bot": "════════════"}
 }
 
-# ========== БАЗА ДАННЫХ ==========
+def get_theme(floor):
+    for theme in FLOOR_THEMES.values():
+        if theme["range"][0] <= floor <= theme["range"][1]: return theme
+    return FLOOR_THEMES["transcendent"]
+
+# ==========================================
+# 📊 БАЗА ДАННЫХ (Из database.py)
+# ==========================================
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        nickname TEXT,
-        trust INTEGER DEFAULT 0,
-        current_floor INTEGER DEFAULT 1,
-        energy INTEGER DEFAULT 10,
-        last_work_time TIMESTAMP,
-        first_choice TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    conn.commit()
+    conn = sqlite3.connect(DATABASE_NAME)
+    conn.execute('''CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY, nickname TEXT, trust_level INTEGER DEFAULT 0,
+        current_floor INTEGER DEFAULT 1, energy INTEGER DEFAULT 10,
+        last_energy_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ernie_memory TEXT DEFAULT '{}', last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.close()
 
 def get_user(user_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DATABASE_NAME)
     conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute('INSERT OR IGNORE INTO users (user_id) VALUES (?)', (user_id,))
-    cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
-    user = cursor.fetchone()
-    conn.commit()
+    user = conn.execute('SELECT * FROM users WHERE user_id = ?', (user_id,)).fetchone()
     conn.close()
     return dict(user) if user else None
 
-def update_user(user_id, **kwargs):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    set_clause = ', '.join([f"{key} = ?" for key in kwargs.keys()])
-    values = list(kwargs.values()) + [user_id]
-    cursor.execute(f'UPDATE users SET {set_clause} WHERE user_id = ?', values)
+def create_user(user_id, nickname, first_choice):
+    conn = sqlite3.connect(DATABASE_NAME)
+    mem = json.dumps({'first_choice': first_choice, 'style': 'empathetic' if first_choice == 'read' else 'pragmatic'})
+    conn.execute('INSERT INTO users (user_id, nickname, ernie_memory) VALUES (?, ?, ?)', (user_id, nickname, mem))
     conn.commit()
     conn.close()
 
-# ========== ГЕЙМПЛЕЙ ==========
-def get_main_keyboard(user):
-    keyboard = []
-    # Кнопка работы
-    keyboard.append([InlineKeyboardButton("🛠 РАБОТАТЬ (+1% Доверия)", callback_data='work')])
-    
-    # Кнопки этажей
-    for num, theme in FLOOR_THEMES.items():
-        status = "✅" if user['trust'] >= theme['trust_needed'] else "🔒"
-        current = "📍 " if user['current_floor'] == num else ""
-        btn_text = f"{current}{status} {theme['emoji']} {theme['name']} ({theme['trust_needed']}%)"
-        keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'floor_{num}')])
-    
-    keyboard.append([InlineKeyboardButton("📊 Профиль", callback_data='profile'), InlineKeyboardButton("❓ Помощь", callback_data='help')])
-    return InlineKeyboardMarkup(keyboard)
+# ==========================================
+# 🤖 ЛОГИКА БОТА (Из main.py)
+# ==========================================
+logging.basicConfig(level=logging.INFO)
 
-# ========== ОБРАБОТЧИКИ ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-    
-    if not user.get('nickname'):
-        await update.message.reply_text("🤖 *ЭРНИ*: Введи своё имя, узел:")
-        return
-    
-    await show_main_menu(update, context)
+    user = get_user(update.effective_user.id)
+    if user:
+        await update.message.reply_text(f"С возвращением, {user['nickname']}! Используй /floor.")
+    else:
+        await update.message.reply_text("⚡ СИСТЕМА АКТИВИРОВАНА ⚡\n\nВыбери имя:")
+        context.user_data['awaiting_name'] = True
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text.strip()
-    user = get_user(user_id)
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get('awaiting_name'):
+        name = update.message.text[:20]
+        context.user_data['nickname'] = name
+        context.user_data['awaiting_name'] = False
+        kb = [[InlineKeyboardButton("✅ Да, прочитать", callback_data='d_read'),
+               InlineKeyboardButton("❌ Нет, игнор", callback_data='d_ignore')]]
+        await update.message.reply_text(f"{name}... Прошлый узел оставил сообщение. Читать?", reply_markup=InlineKeyboardMarkup(kb))
 
-    if not user.get('nickname'):
-        update_user(user_id, nickname=text)
-        await update.message.reply_text(f"🤖 *ЭРНИ*: Принято, {text}. Теперь сделай выбор.")
-        # Первый выбор
-        kb = [[InlineKeyboardButton("📜 Читать", callback_data='choice_read'), InlineKeyboardButton("🚫 Игнор", callback_data='choice_ignore')]]
-        await update.message.reply_text("Обнаружено сообщение от прошлого узла. Читать?", reply_markup=InlineKeyboardMarkup(kb))
-        return
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-    user = get_user(user_id)
-    data = query.data
+    uid = query.from_user.id
+    
+    if query.data.startswith('d_'):
+        choice = 'read' if 'read' in query.data else 'ignore'
+        create_user(uid, context.user_data.get('nickname', 'Узел'), choice)
+        await query.edit_message_text(f"Выбор сделан: {choice}. Начнём. Используй /floor.")
 
-    if data == 'work':
+    elif query.data == 'do_task':
+        user = get_user(uid)
         if user['energy'] > 0:
-            new_trust = user['trust'] + 1
-            new_energy = user['energy'] - 1
-            update_user(user_id, trust=new_trust, energy=new_energy)
-            await query.edit_message_text(f"⚙️ *ЭРНИ*: Прогресс отмечен. Доверие: {new_trust}% | Энергия: {new_energy}/10", reply_markup=get_main_keyboard(get_user(user_id)))
+            conn = sqlite3.connect(DATABASE_NAME)
+            conn.execute('UPDATE users SET energy = energy - 1, trust_level = trust_level + 1 WHERE user_id = ?', (uid,))
+            conn.commit()
+            conn.close()
+            await query.edit_message_text(f"Задание выполнено! Доверие: {user['trust_level']+1}% | Энергия: {user['energy']-1}/10")
         else:
-            await query.answer("Нет энергии! Восстановление: 1/2 часа.", show_alert=True)
+            await query.answer("Нет энергии!", show_alert=True)
 
-    elif data.startswith('floor_'):
-        f_num = int(data.split('_')[1])
-        theme = FLOOR_THEMES[f_num]
-        if user['trust'] >= theme['trust_needed']:
-            update_user(user_id, current_floor=f_num)
-            # Если есть картинка для этажа - шлем её
-            if f_num in IMG_LINKS:
-                await query.message.reply_photo(IMG_LINKS[f_num], caption=f"Добро пожаловать в {theme['name']}!")
-            await show_main_menu(query, context, is_query=True)
-        else:
-            await query.answer(f"Нужно {theme['trust_needed']}% доверия!", show_alert=True)
+async def floor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = get_user(update.effective_user.id)
+    if not user: return
+    theme = get_theme(user['current_floor'])
+    text = f"{theme['emoji']} ЭТАЖ {user['current_floor']}/100\n\n{theme['top']}\nЭРНИ: Система наблюдает.\n{theme['bot']}\n\n📍 {theme['name']}"
+    kb = [[InlineKeyboardButton("⚙️ Выполнить задание", callback_data='do_task')]]
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
 
-    elif data == 'profile':
-        await query.message.reply_text(f"📊 ПРОФИЛЬ: {user['nickname']}\nДоверие: {user['trust']}%\nЭнергия: {user['energy']}/10")
-
-async def show_main_menu(update, context, is_query=False):
-    u_id = update.effective_user.id
-    user = get_user(u_id)
-    theme = FLOOR_THEMES[user['current_floor']]
-    text = f"{theme['emoji']} *{theme['name']}*\n\n🤖 *ЭРНИ*: Что будем делать?\nДоверие: {user['trust']}% | Энергия: {user['energy']}/10"
-    
-    if is_query:
-        await update.edit_message_text(text, reply_markup=get_main_keyboard(user), parse_mode='Markdown')
-    else:
-        await update.message.reply_text(text, reply_markup=get_main_keyboard(user), parse_mode='Markdown')
-
-# Восстановление энергии (раз в 2 часа)
-async def energy_regen(context: ContextTypes.DEFAULT_TYPE):
-    conn = sqlite3.connect(DB_NAME)
-    conn.execute('UPDATE users SET energy = MIN(energy + 1, 10) WHERE energy < 10')
-    conn.commit()
-    conn.close()
-
-# ========== ЗАПУСК ==========
-def main():
+# ==========================================
+# 🚀 ЗАПУСК
+# ==========================================
+if __name__ == '__main__':
     init_db()
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Добавляем цикл восстановления энергии каждые 2 часа (7200 секунд)
-    application.job_queue.run_repeating(energy_regen, interval=7200, first=10)
-
-    application.add_handler(CommandHandler("start", start))
-    application
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("floor", floor_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(CallbackQueryHandler(callback))
+    print("🤖 ЭРНИ запущен!")
+    app.run_polling()
