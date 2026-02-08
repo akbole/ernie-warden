@@ -175,7 +175,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_photo(
                     chat_id=user_id,
-                    photo=open("elevator.jpg", "rb"),
+                    photo=open("elevator.jpg.jpg", "rb"),
                     caption=(
                         f"🚪 **ПЕРЕХОД НА ЭТАЖ {new_floor}**\n\n"
                         f"ЭРНИ: \"{ernie_msg}\"\n\n"
