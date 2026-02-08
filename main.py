@@ -4,7 +4,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 from database import init_db, get_user, create_user, update_user, get_memory, restore_energy
 
 # ==========================================
-# ВСТАВЬ СВОЙ ТОКЕН НИЖЕ:
+# ТВОЙ ТОКЕН:
 TOKEN = "8576970896:AAEYJTWDVaQ1ELAg1PGoWrDQJB7RTr5KXRc"
 # ==========================================
 
@@ -47,7 +47,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    restore_energy(user_id) # Обновляем энергию перед показом
+    restore_energy(user_id) 
     user = get_user(user_id)
     
     if not user: return
@@ -77,23 +77,18 @@ async def floor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚡ {user['energy']}/10  |  🏆 {user['trust_level']}%"
     )
 
-    # === ЖЕЛЕЗОБЕТОННЫЙ СПОСОБ ===
-    # Пытаемся отправить файл прямо из папки
     try:
         if floor <= 10:
-            # Ищем файл bunker.jpg рядом с кодом
+            # Ищем файл bunker.jpg.jpg (с двойным расширением, как у тебя)
             await update.message.reply_photo(
                 photo=open("bunker.jpg.jpg", "rb"), 
                 caption=caption, 
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            # Для других этажей пока просто текст
             await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard))
             
     except Exception as e:
-        # ЕСЛИ ОШИБКА (например, забыл загрузить файл) - бот не сломается!
-        # Он просто отправит текст и напишет ошибку в лог консоли
         print(f"⚠️ Ошибка картинки: {e}")
         await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -103,7 +98,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     if query.data in ['read', 'ignore']:
-        # Логика первого выбора (упрощено)
         choice = query.data
         memory = get_memory(user_id)
         memory['first_choice'] = choice
@@ -115,7 +109,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = get_user(user_id)
         
         if user['energy'] > 0:
-            # ТРАТИМ ЭНЕРГИЮ, ДАЕМ ДОВЕРИЕ
             new_energy = user['energy'] - 1
             new_trust = user['trust_level'] + 1
             update_user(user_id, energy=new_energy, trust_level=new_trust)
@@ -123,14 +116,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             floor = user['current_floor']
             theme = FLOOR_THEMES.get(floor, {"name": "?", "emoji": "?"})
             
-            # Обновляем сообщение (красивая анимация цифр)
-            keyboard = [[InlineKeyboardButton("🛠 Выполнить задание (-1 Энергия)", callback_data='work')]]
-            await query.edit_message_text(
+            new_text = (
                 f"{theme['emoji']} ЭТАЖ {floor}: {theme['name']}\n\n"
                 f"✅ Задание выполнено. Доверие растет.\n\n"
-                f"⚡ {new_energy}/10  |  🏆 {new_trust}%",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                f"⚡ {new_energy}/10  |  🏆 {new_trust}%"
             )
+            
+            keyboard = [[InlineKeyboardButton("🛠 Выполнить задание (-1 Энергия)", callback_data='work')]]
+            
+            # ВАЖНОЕ ИСПРАВЛЕНИЕ:
+            # Если сообщение с картинкой — меняем ПОДПИСЬ (caption)
+            # Если просто текст — меняем ТЕКСТ
+            if query.message.photo:
+                await query.edit_message_caption(caption=new_text, reply_markup=InlineKeyboardMarkup(keyboard))
+            else:
+                await query.edit_message_text(text=new_text, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await context.bot.send_message(chat_id=user_id, text="⚠️ НЕДОСТАТОЧНО ЭНЕРГИИ. Отдохни.")
 
