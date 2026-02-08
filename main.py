@@ -204,35 +204,47 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         restore_energy(user_id)
         user = get_user(user_id)
         
-        if user['energy'] > 0:
-            if user['trust_level'] >= 100:
-                await context.bot.send_message(user_id, "🛑 Доверие максимально. Ищи лифт!")
-                return
-
-            new_energy = user['energy'] - 1
-            new_trust = min(user['trust_level'] + 1, 100)
-            update_user(user_id, energy=new_energy, trust_level=new_trust)
-            
-            floor = user['current_floor']
-            theme_key = min((floor - 1) // 20 + 1, 6)
-            theme = FLOOR_THEMES[theme_key]
-            
-            if new_trust >= 100:
-                keyboard = [[InlineKeyboardButton("🔼 ПОДНЯТЬСЯ НА ЛИФТЕ", callback_data='elevator')]]
-                status = "✅ ДОСТУП РАЗРЕШЕН!"
-            else:
-                keyboard = [[InlineKeyboardButton("🛠 Выполнить задание (-1 ⚡)", callback_data='work')]]
-                user['trust_level'] = new_trust
-                status = get_ernie_quote(user, "work")
-
-            caption = f"{theme['emoji']} **ЭТАЖ {floor}**: {theme['name']}\n{theme['desc']}\n\nЭРНИ: \"{status}\"\n\n⚡ {new_energy}/10  |  🏆 {new_trust}%"
-            
-            if query.message.photo:
-                await query.edit_message_caption(caption=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            else:
-                await query.edit_message_text(text=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
+        if user['energy'] <= 0:
             await context.bot.send_message(user_id, "⚠️ НЕДОСТАТОЧНО ЭНЕРГИИ. Восстановление: 1/2 часа.")
+            return
+        
+        if user['trust_level'] >= 100:
+            await context.bot.send_message(user_id, "🛑 Доверие максимально. Ищи лифт! Жми /floor")
+            return
+
+        new_energy = user['energy'] - 1
+        new_trust = min(user['trust_level'] + 1, 100)
+        update_user(user_id, energy=new_energy, trust_level=new_trust)
+        
+        floor = user['current_floor']
+        theme_key = min((floor - 1) // 20 + 1, 6)
+        theme = FLOOR_THEMES[theme_key]
+        
+        if new_trust >= 100:
+            keyboard = [[InlineKeyboardButton("🔼 ПОДНЯТЬСЯ НА ЛИФТЕ", callback_data='elevator')]]
+            status = "✅ ДОСТУП РАЗРЕШЕН!"
+        else:
+            keyboard = [[InlineKeyboardButton("🛠 Выполнить задание (-1 ⚡)", callback_data='work')]]
+            user_updated = dict(user)
+            user_updated['trust_level'] = new_trust
+            user_updated['energy'] = new_energy
+            status = get_ernie_quote(user_updated, "work")
+
+        caption = f"{theme['emoji']} **ЭТАЖ {floor}**: {theme['name']}\n{theme['desc']}\n\nЭРНИ: \"{status}\"\n\n⚡ {new_energy}/10  |  🏆 {new_trust}%"
+        
+        try:
+            await query.edit_message_caption(
+                caption=caption, 
+                reply_markup=InlineKeyboardMarkup(keyboard), 
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            print(f"⚠️ Не удалось отредактировать: {e}")
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"✅ **ЗАДАНИЕ ВЫПОЛНЕНО!**\n\n⚡ Энергия: {new_energy}/10\n🏆 Доверие: {new_trust}%\n\n{status}\n\nЖми /floor чтобы обновить.",
+                parse_mode='Markdown'
+            )
 
 if __name__ == '__main__':
     init_db()
@@ -244,5 +256,5 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     app.add_handler(CallbackQueryHandler(button_handler))
     
-    print("🤖 ЭРНИ v4.0 ФИНАЛ | Зоны: 6 | Вау: 3 | Доверие: +1%")
+    print("🤖 ЭРНИ v4.1 ФИНАЛ | Зоны: 6 | Вау: 3 | Доверие: +1% | FIX: Кнопки")
     app.run_polling()
