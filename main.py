@@ -73,10 +73,10 @@ async def floor_command (update: Update, context: ContextTypes.DEFAULT_TYPE):
     image_url = ""
     if floor <= 10:
         # Картинка бетонного коридора
-        image_url = "https://images.unsplash.com/photo-1518544866385-e55577174e1d?auto=format&fit=crop&w=1000&q=80"
+        image_url = "https://https://github.com/user-attachments/assets/8b9fe121-5597-47a5-a9ac-3de150036c7b"
     elif floor >= 71 and floor <= 90:
         # Картинка неонового сада
-        image_url = "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=1000&q=80"
+        image_url = "https://https://github.com/user-attachments/assets/8b9fe121-5597-47a5-a9ac-3de150036c7b"
     # ================================
 
     keyboard = [[InlineKeyboardButton("🛠 Выполнить задание (-1 Энергия)", callback_data='work')]]
