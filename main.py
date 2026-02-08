@@ -5,7 +5,7 @@ from database import init_db, get_user, create_user, update_user, get_memory, re
 
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН НИЖЕ:
-TOKEN = "ВСТАВЬ_СВОЙ_ТОКЕН_СЮДА"
+TOKEN = "8576970896:AAEYJTWDVaQ1ELAg1PGoWrDQJB7RTr5KXRc"
 # ==========================================
 
 logging.basicConfig(
