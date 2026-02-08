@@ -12,7 +12,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 # ========== КОНФИГУРАЦИЯ ==========
 # ⚠️ ВАЖНО: ЗАМЕНИ ЭТОТ ТОКЕН НА СВОЙ!
-BOT_TOKEN = os.getenv('BOT_TOKEN', '7933434246:AAErOnLbmRoQrVWnwlnq_Wa7pWiYFAYE7P8')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8576970896:AAEYJTWDVaQ1ELAg1PGoWrDQJB7RTr5KXRc')
 DB_NAME = "ernie_database.db"
 WORK_COOLDOWN = 30  # секунд между заданиями
 
