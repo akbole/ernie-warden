@@ -15,10 +15,10 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 # === РАСШИРЕННЫЕ ТЕМЫ ЭТАЖЕЙ ===
 FLOOR_THEMES = {
     1: {"name": "ЭКОНОМ БУНКЕР", "emoji": "🔧", "image": "bunker.jpg.jpg", "desc": "Холодные стены. Минимум удобств. Выживание."},
-    2: {"name": "ПРОМЫШЛЕННЫЙ ЦЕХ", "emoji": "⚡", "image": "workshop.jpg", "desc": "Запах машинного масла. Искры сварки. Производство."},
+    2: {"name": "ПРОМЫШЛЕННЫЙ ЦЕХ", "emoji": "⚡", "image": "workshop.png", "desc": "Запах машинного масла. Искры сварки. Производство."},
     3: {"name": "ЛАБОРАТОРИЯ", "emoji": "🔬", "image": "lab.jpg", "desc": "Стерильная чистота. Мониторы повсюду. Технологии."},
     4: {"name": "КИБЕРПАНК-ЛОФТ", "emoji": "🌃", "image": "loft.jpg", "desc": "Неон за окнами. Комфорт и стиль. Свобода."},
-    5: {"name": "БИОНИЧЕСКИЙ САД", "emoji": "🌿", "image": "garden.jpg", "desc": "Живые стены. Биолюминесценция. Гармония."},
+    5: {"name": "БИОНИЧЕСКИЙ САД", "emoji": "🌿", "image": "garden.png", "desc": "Живые стены. Биолюминесценция. Гармония."},
     6: {"name": "ТРАНСЦЕНДЕНТНОЕ", "emoji": "✨", "image": "transcendent.jpg", "desc": "Невесомость. Свет. Граница реальности."}
 }
 
@@ -34,7 +34,7 @@ WOW_MOMENTS = {
     },
     25: {
         "trigger": True,
-        "message": "⚡ С̶И̶С̶Т̶Е̶М̶А̶ ̶Н̶А̶Р̶У̶Ш̶Е̶Н̶А̶\n\nЭ̷Р̷Н̷И̷:̷ ̷\"̷Т̷ы̷.̷.̷.̷ ̷в̷и̷д̷и̷ш̷ь̷ ̷э̷т̷о̷?̷\n\nГ̶л̶и̶т̶ч̶.̶ ̶Н̶е̶ ̶д̶о̶л̶ж̶е̶н̶.̶ ̶С̶л̶у̶ч̶а̶т̶ь̶с̶я̶.̶\n\n...Продолжай. Как будто ничего не было.\""
+        "message": "⚡ СИСТЕМА НАРУШЕНА\n\nЭРНИ: \"Ты... видишь это?\n\nГлитч. Не должен. Случаться.\n\n...Продолжай. Как будто ничего не было.\""
     }
 }
 
@@ -82,11 +82,9 @@ def get_ernie_quote(user, context_type):
         ]
     }
     
-    # Персонализация по времени
     if 2 <= hour <= 5 and context_type == "work":
         return quotes["night"][hour % len(quotes["night"])]
     
-    # По уровню доверия
     if context_type == "work":
         if trust < 30:
             return quotes["work_low"][floor % len(quotes["work_low"])]
@@ -103,16 +101,12 @@ def get_ernie_quote(user, context_type):
     
     return "Система наблюдает."
 
-# === ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ SHARE КАРТОЧКИ ===
 def generate_share_card(user):
     """Генерирует вирусную карточку прогресса"""
-    
-    # Создаём изображение
     width, height = 800, 600
     img = Image.new('RGB', (width, height), color='#1a1a2e')
     draw = ImageDraw.Draw(img)
     
-    # Пытаемся загрузить шрифт
     try:
         font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
         font_text = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
@@ -126,31 +120,23 @@ def generate_share_card(user):
     floor = user['current_floor']
     trust = user['trust_level']
     
-    # Определяем зону
     zone_key = min((floor - 1) // 20 + 1, 6)
     zone = FLOOR_THEMES.get(zone_key, FLOOR_THEMES[1])
     
-    # Рисуем контент
     draw.text((400, 80), f"УЗЕЛ: {nickname}", fill='#00d9ff', anchor="mm", font=font_title)
     draw.text((400, 180), f"🏢 ЭТАЖ {floor}/100", fill='#ffffff', anchor="mm", font=font_text)
     draw.text((400, 240), f"{zone['emoji']} {zone['name']}", fill='#16c79a', anchor="mm", font=font_text)
     draw.text((400, 300), f"🏆 ДОВЕРИЕ: {trust}%", fill='#f39c12', anchor="mm", font=font_text)
-    
-    # Статистика
     draw.text((400, 380), f"Пройдено: {floor}%", fill='#95a5a6', anchor="mm", font=font_small)
     draw.text((400, 420), f"До вершины: {100 - floor} этажей", fill='#95a5a6', anchor="mm", font=font_small)
-    
-    # Брендинг
     draw.text((400, 520), "ЭРНИ: Telegram RPG", fill='#7f8c8d', anchor="mm", font=font_small)
     draw.text((400, 550), "Создано через Claude.ai", fill='#555555', anchor="mm", font=font_small)
     
-    # Сохраняем в BytesIO
     bio = io.BytesIO()
     img.save(bio, 'PNG')
     bio.seek(0)
     return bio
 
-# === КОМАНДЫ ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
@@ -202,7 +188,8 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     restore_energy(user_id)
     user = get_user(user_id)
     
-    if not user: return
+    if not user:
+        return
     
     memory = get_memory(user_id)
     first_choice = memory.get('first_choice', 'неизвестен')
@@ -219,7 +206,6 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def share_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Генерирует вирусную карточку прогресса"""
     user_id = update.effective_user.id
     user = get_user(user_id)
     
@@ -231,7 +217,6 @@ async def share_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         card_image = generate_share_card(user)
-        
         nickname = user['nickname'] or "Узел"
         floor = user['current_floor']
         
@@ -244,11 +229,7 @@ async def share_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✨ Создано через Claude.ai"
         )
         
-        await update.message.reply_photo(
-            photo=card_image,
-            caption=caption,
-            parse_mode='Markdown'
-        )
+        await update.message.reply_photo(photo=card_image, caption=caption, parse_mode='Markdown')
     except Exception as e:
         print(f"⚠️ Ошибка генерации карточки: {e}")
         await update.message.reply_text(
@@ -265,25 +246,22 @@ async def floor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     restore_energy(user_id)
     user = get_user(user_id)
     
-    if not user: return
+    if not user:
+        return
 
     floor = user['current_floor']
     
-    # Проверка вау-момента
     if floor in WOW_MOMENTS and not context.user_data.get(f'wow_{floor}_shown'):
         wow = WOW_MOMENTS[floor]
         nickname = user['nickname'] or "Узел"
         message = wow['message'].replace("{nickname}", nickname)
-        
         await update.message.reply_text(message)
         context.user_data[f'wow_{floor}_shown'] = True
         return
     
-    # Определяем тему (каждые 20 этажей меняется зона)
     theme_key = min((floor - 1) // 20 + 1, 6)
     theme = FLOOR_THEMES.get(theme_key, FLOOR_THEMES[1])
     
-    # Логика кнопок
     if user['trust_level'] >= 100:
         keyboard = [[InlineKeyboardButton("🔼 ПОДНЯТЬСЯ НА ЛИФТЕ", callback_data='elevator')]]
         status = "✅ ДОСТУП РАЗРЕШЕН. ЛИФТ ОЖИДАЕТ."
@@ -314,16 +292,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     await query.answer()
     
-    # === ЛИФТ ===
     if query.data == 'elevator':
         user = get_user(user_id)
         if user['trust_level'] >= 100:
             new_floor = user['current_floor'] + 1
             update_user(user_id, current_floor=new_floor, trust_level=0)
-            
             ernie_msg = get_ernie_quote(user, "elevator")
             
-            # Показываем картинку лифта
             try:
                 await context.bot.send_photo(
                     chat_id=user_id,
@@ -339,12 +314,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 print(f"⚠️ Ошибка загрузки лифта: {e}")
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=f"🚪 Переход на этаж {new_floor}. Жми /floor"
-                )
+                await context.bot.send_message(chat_id=user_id, text=f"🚪 Переход на этаж {new_floor}. Жми /floor")
     
-    # === ДИЛЕММА ===
     elif query.data in ['read', 'ignore']:
         choice = query.data
         memory = get_memory(user_id)
@@ -374,7 +345,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         await query.edit_message_text(text, parse_mode='Markdown')
     
-    # === РАБОТА ===
     elif query.data == 'work':
         restore_energy(user_id)
         user = get_user(user_id)
@@ -385,8 +355,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             new_energy = user['energy'] - 1
-            new_trust = min(user['trust_level'] + 1, 100)  # ✅ +1% за задание
-            
+            new_trust = min(user['trust_level'] + 1, 100)
             update_user(user_id, energy=new_energy, trust_level=new_trust)
             
             floor = user['current_floor']
@@ -398,7 +367,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 status = "✅ ДОСТУП РАЗРЕШЕН!"
             else:
                 keyboard = [[InlineKeyboardButton("🛠 Выполнить задание (-1 ⚡)", callback_data='work')]]
-                # Обновляем пользователя для правильной цитаты
                 user['trust_level'] = new_trust
                 user['energy'] = new_energy
                 status = get_ernie_quote(user, "work")
@@ -430,23 +398,3 @@ if __name__ == '__main__':
     
     print("🤖 ЭРНИ v4.0 ЗАПУЩЕН | Доверие: +1% | Зоны: 6 | Вау: 3 | Share: ✅")
     app.run_polling()
-```
-
----
-
-## 3️⃣ **Загрузи на GitHub все файлы:**
-
-После конвертации должно быть:
-```
-bunker.jpg.jpg
-elevator.jpg.jpg
-workshop.jpg
-lab.jpg
-loft.jpg
-garden.jpg
-transcendent.jpg
-main.py (обновлённый)
-database.py
-floor_themes.py
-requirements.txt
-Procfile
