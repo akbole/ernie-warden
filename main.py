@@ -83,7 +83,7 @@ async def floor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if floor <= 10:
             # Ищем файл bunker.jpg рядом с кодом
             await update.message.reply_photo(
-                photo=open("bunker.jpg", "rb"), 
+                photo=open("bunker.jpg.jpg", "rb"), 
                 caption=caption, 
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
