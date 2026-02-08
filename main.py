@@ -59,7 +59,7 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏢 Этаж: {user['current_floor']}"
     )
 
-async def floor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def floor_command (update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     restore_energy(user_id)
     user = get_user(user_id)
@@ -91,7 +91,6 @@ async def floor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(photo=image_url, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard))
-    )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
