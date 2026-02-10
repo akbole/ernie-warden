@@ -1,0 +1,1251 @@
+import { useState, useEffect, useRef } from "react";
+
+/* ══════════════════════════════════════════
+   ERNIE v32.0 — STORY & CONSEQUENCES
+   1. TRACKING: Скрытый подсчет стиля игры (Риск vs Осторожность).
+   2. STORY: Этаж 15 (Выбор) -> Этаж 34 (Эхо).
+   3. EVENT: Этаж 50 — "Комната Правды" (анализ игрока).
+   4. EVENT: Этаж 42 — Скример "Ложь Эрни".
+   5. STABLE: Весь контент v31.1 сохранен.
+   ══════════════════════════════════════════ */
+
+/* --- ASSETS --- */
+const IMG = {
+  CABIN:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/elevator.jpg",
+  LAB: "https://raw.githubusercontent.com/akbole/ernie-warden/main/lab.jpg",
+  LOFT: "https://raw.githubusercontent.com/akbole/ernie-warden/main/loft.jpg",
+  GARDEN:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/garden.jpg",
+  OFFICE:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/office.jpg",
+  SERVERS:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/servers.jpg",
+  OBSERVATORY:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/observatory.jpg",
+  MIRROR:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/mirror.jpg",
+  GLITCH:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/glitch.jpg",
+  LIMIT: "https://raw.githubusercontent.com/akbole/ernie-warden/main/limit.jpg",
+};
+
+/* --- DATA --- */
+const KEYS = {
+  SILENCE: {
+    id: "silence",
+    name: "КЛЮЧ ТИШИНЫ",
+    tier: "silver",
+    desc: "Эрни молчит (3 эт).",
+    duration: 3,
+    icon: "🔇",
+  },
+  MIRROR: {
+    id: "mirror",
+    name: "КЛЮЧ ЗЕРКАЛА",
+    tier: "silver",
+    desc: "Мысли героя (3 эт).",
+    duration: 3,
+    icon: "🪞",
+  },
+  INSIGHT: {
+    id: "insight",
+    name: "КЛЮЧ ПРОЗРЕНИЯ",
+    tier: "silver",
+    desc: "Визор (5 эт).",
+    duration: 5,
+    icon: "👁",
+  },
+  ARCHITECT: {
+    id: "architect",
+    name: "КЛЮЧ АРХИТЕКТОРА",
+    tier: "gold",
+    desc: "Улучшить лифт.",
+    duration: 0,
+    icon: "📐",
+  },
+  HIDDEN: {
+    id: "hidden",
+    name: "КЛЮЧ ПУСТОТЫ",
+    tier: "gold",
+    desc: "???",
+    duration: 0,
+    icon: "Ø",
+  },
+};
+
+const PHRASES = {
+  // ZONES
+  CABIN: [
+    "Лифт скрипит. Ты только начал.",
+    "Стены пахнут маслом.",
+    "Вверх. Только вверх.",
+  ],
+  LAB: [
+    "Стерильная чистота. Это обман.",
+    "Здесь изучали пределы тела.",
+    "Стеклянные колбы пусты.",
+  ],
+  LOFT: ["Кто-то здесь жил.", "Пыль на мебели.", "Уют — это ловушка."],
+  GARDEN: ["Синтетический фотосинтез.", "Цветы не пахнут.", "Влажность 90%."],
+  OFFICE: ["Миллионы отчетов.", "Бумага гниет.", "Бюрократия вечна."],
+  SERVERS: [
+    "Данные — это новая кровь.",
+    "Гул вентиляторов.",
+    "Система видит тебя.",
+  ],
+  OBSERVATORY: ["Звезды холодные.", "Стекло треснуло.", "Ты так высоко."],
+  MIRROR: [
+    "Твое отражение запаздывает.",
+    "Кто смотрит на тебя?",
+    "Разбей зеркало.",
+  ],
+  GLITCH: ["01001000... Помоги...", "Реальность расслаивается.", "ОШИБКА."],
+
+  // STORY SPECIFIC
+  ECHO_SAVED: [
+    "Ты чувствуешь тепло в кармане. Тот выбор был верным.",
+    "Мир помнит твою доброту.",
+  ],
+  ECHO_GREED: [
+    "Ты чувствуешь пустоту. Тот выбор был ошибкой.",
+    "Энергия, которую ты украл, исчезла.",
+  ],
+  TRUTH_RISKY: [
+    "Ты зависим от адреналина. 80% риска. Зачем?",
+    "Ты не смелый. Ты безрассудный.",
+  ],
+  TRUTH_SAFE: [
+    "Ты боишься жить. Ни одного риска.",
+    "Осторожность — это медленная смерть.",
+  ],
+
+  // DEFAULT
+  INSIGHT: [
+    "АНАЛИЗ: ПУЛЬС 120.",
+    "СТАТУС: АКТИВЕН.",
+    "СБОЙ: 0%.",
+    "СИСТЕМА: НОРМА.",
+  ],
+  MIRROR_KEY: [
+    "Я чувствую холод.",
+    "Мои руки дрожат.",
+    "Я не помню свое имя.",
+    "Кто здесь?",
+  ],
+  DEFAULT: ["Тишина.", "Продолжай движение.", "Энергия падает."],
+};
+
+/* --- HOOKS --- */
+function useTypewriter(fullText, speed = 35) {
+  const [displayed, setDisplayed] = useState("");
+  const [done, setDone] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    setDisplayed("");
+    setDone(false);
+    let i = 0;
+    clearInterval(ref.current);
+    if (!fullText) return;
+    ref.current = setInterval(() => {
+      i++;
+      setDisplayed(fullText.slice(0, i));
+      if (i >= fullText.length) {
+        clearInterval(ref.current);
+        setTimeout(() => setDone(true), 300);
+      }
+    }, speed);
+    return () => clearInterval(ref.current);
+  }, [fullText, speed]);
+
+  return { displayed, done };
+}
+
+/* --- COMPONENTS --- */
+function EnergyPulse({ energy, max, isInsight }) {
+  const pct = Math.max(0, Math.min(1, energy / max));
+  const isCritical = pct < 0.2;
+  const color = isInsight
+    ? "#00FFFF"
+    : isCritical
+    ? "#FF0000"
+    : pct < 0.5
+    ? "#E94560"
+    : "#666";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span
+        style={{
+          fontSize: 11,
+          color: color,
+          textShadow: isInsight ? "0 0 5px #00FFFF" : "none",
+        }}
+      >
+        ⚡
+      </span>
+      <div
+        style={{
+          width: 60,
+          height: 4,
+          background: "rgba(255,255,255,0.1)",
+          borderRadius: 2,
+        }}
+      >
+        <div
+          style={{
+            width: `${pct * 100}%`,
+            height: "100%",
+            background: color,
+            transition: "width 0.6s ease",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function FloorStack({ floor, zoneLabel, zoneColor, isGlitching }) {
+  return (
+    <div style={{ textAlign: "right" }}>
+      <div
+        style={{
+          fontSize: 36,
+          fontWeight: 800,
+          color: "#e0e0e0",
+          fontFamily: "'JetBrains Mono', monospace",
+          lineHeight: 1,
+        }}
+      >
+        {isGlitching ? Math.floor(Math.random() * 99) : floor}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: 2,
+          color: "#AAAAAA",
+          fontWeight: "bold",
+        }}
+      >
+        ЭТАЖ
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: 1,
+          color: zoneColor,
+          fontWeight: "bold",
+          opacity: 0.9,
+        }}
+      >
+        {isGlitching ? "ERR_ZONE" : zoneLabel}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   🚀 MAIN APP
+   ══════════════════════════════════════════ */
+export default function ErnieGame() {
+  const [appState, setAppState] = useState("loading");
+
+  // Stats
+  const [floor, setFloor] = useState(
+    () => Number(localStorage.getItem("ernie_floor")) || 1
+  );
+  const [energy, setEnergy] = useState(
+    () => Number(localStorage.getItem("ernie_energy")) || 100
+  );
+  const [hasKey, setHasKey] = useState(
+    () => localStorage.getItem("ernie_key") === "true"
+  );
+  const [loopCount, setLoopCount] = useState(
+    () => Number(localStorage.getItem("ernie_loop")) || 0
+  );
+  const [inventory, setInventory] = useState(
+    () => JSON.parse(localStorage.getItem("ernie_inventory")) || []
+  );
+  const [activeEffects, setActiveEffects] = useState(
+    () => JSON.parse(localStorage.getItem("ernie_effects")) || {}
+  );
+
+  // 🔥 BEHAVIOR TRACKING (NEW)
+  const [riskCount, setRiskCount] = useState(
+    () => Number(localStorage.getItem("ernie_risk")) || 0
+  );
+  const [restCount, setRestCount] = useState(
+    () => Number(localStorage.getItem("ernie_rest")) || 0
+  );
+  const [echoChoice, setEchoChoice] = useState(
+    () => localStorage.getItem("ernie_echo") || null
+  );
+
+  // Modifiers
+  const [maxEnergyMod, setMaxEnergyMod] = useState(
+    () => Number(localStorage.getItem("ernie_mod_energy")) || 0
+  );
+  const [costMod, setCostMod] = useState(
+    () => Number(localStorage.getItem("ernie_mod_cost")) || 0
+  );
+
+  // UI
+  const [phase, setPhase] = useState("floor");
+  const [currentText, setCurrentText] = useState("");
+  const [showBag, setShowBag] = useState(false);
+  const [showArchitectMenu, setShowArchitectMenu] = useState(false);
+  const [trialResult, setTrialResult] = useState(null);
+  const [introStep, setIntroStep] = useState(0);
+
+  // FX
+  const [fxFlash, setFxFlash] = useState(null);
+  const [isLightFailure, setIsLightFailure] = useState(false);
+  const [isHallucinating, setIsHallucinating] = useState(false);
+  const [isHiddenFloor, setIsHiddenFloor] = useState(false);
+  const [riddleState, setRiddleState] = useState("ringing");
+
+  // Dev
+  const [showDev, setShowDev] = useState(false);
+  const [devClicks, setDevClicks] = useState(0);
+  const [devJump, setDevJump] = useState("");
+
+  // Hooks
+  const { displayed, done } = useTypewriter(
+    currentText,
+    phase === "ascending" ? 80 : 35
+  );
+  const { displayed: introText, done: introDone } = useTypewriter(
+    "Ты здесь?",
+    70
+  );
+
+  // Logic
+  const getZone = (f) => {
+    const ZONES = [
+      { max: 10, img: "CABIN", label: "ПРОМЗОНА", color: "#8B4513" },
+      { max: 20, img: "LAB", label: "ЛАБОРАТОРИЯ", color: "#4a7a8a" },
+      { max: 30, img: "LOFT", label: "ЖИЛАЯ ЗОНА", color: "#a08050" },
+      { max: 40, img: "GARDEN", label: "БОТАНИКА", color: "#4a8a4a" },
+      { max: 50, img: "OFFICE", label: "АРХИВ", color: "#7a7a6a" },
+      { max: 60, img: "SERVERS", label: "СЕРВЕРНОЕ ЯДРО", color: "#3a6a8a" },
+      { max: 70, img: "OBSERVATORY", label: "ОБСЕРВАТОРИЯ", color: "#4a5a8a" },
+      { max: 80, img: "MIRROR", label: "ЗЕРКАЛА", color: "#8a8a9a" },
+      { max: 90, img: "GLITCH", label: "СБОЙ", color: "#8a3a6a" },
+      { max: 100, img: "LIMIT", label: "ПРЕДЕЛ", color: "#E0E0E0" },
+    ];
+    return ZONES.find((z) => f <= z.max) || ZONES[9];
+  };
+
+  const zone = getZone(floor);
+  const max =
+    (floor <= 10 ? 100 : floor <= 30 ? 150 : floor <= 60 ? 200 : 250) +
+    maxEnergyMod;
+  const cost = Math.max(
+    10,
+    (floor <= 10 ? 35 : floor <= 30 ? 55 : floor <= 60 ? 80 : 115) - costMod
+  );
+  const canAscend = energy >= cost;
+  const isInsight = (activeEffects.insight || 0) > 0;
+
+  // Actions
+  const triggerFlash = (type) => {
+    setFxFlash(type);
+    setTimeout(() => setFxFlash(null), 300);
+  };
+
+  const processEffects = () => {
+    setActiveEffects((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        if (next[k] > 0) next[k] -= 1;
+        if (next[k] <= 0) delete next[k];
+      });
+      return next;
+    });
+  };
+
+  const consumeKey = (id) => {
+    const idx = inventory.indexOf(id);
+    if (idx > -1) {
+      const newInv = [...inventory];
+      newInv.splice(idx, 1);
+      setInventory(newInv);
+    }
+  };
+
+  const applyArchitect = (type) => {
+    if (type === "cost") {
+      setCostMod(20);
+      setTrialResult("РАСХОД СНИЖЕН (-20).");
+    }
+    if (type === "max") {
+      setMaxEnergyMod(100);
+      setEnergy(max + 100);
+      setTrialResult("БАК РАСШИРЕН (+100).");
+    }
+    setShowArchitectMenu(false);
+  };
+
+  const useKey = (keyId) => {
+    const keyDef = KEYS[Object.keys(KEYS).find((k) => KEYS[k].id === keyId)];
+    if (!keyDef) return;
+    if (keyDef.tier === "silver") {
+      setActiveEffects((prev) => ({ ...prev, [keyId]: keyDef.duration }));
+      consumeKey(keyId);
+    } else if (keyId === "architect") {
+      setShowArchitectMenu(true);
+      consumeKey(keyId);
+    } else if (keyId === "hidden") {
+      setPhase("ascending");
+      setTimeout(() => {
+        setIsHiddenFloor(true);
+        setPhase("floor");
+      }, 2000);
+      consumeKey(keyId);
+    }
+    setShowBag(false);
+  };
+
+  const tryLootKey = () => {
+    if (Math.random() > 0.8) {
+      const keys = ["silence", "mirror", "insight", "architect", "hidden"];
+      const newKey = keys[Math.floor(Math.random() * keys.length)];
+      setInventory((prev) => [...prev, newKey]);
+      return `НАЙДЕН ${
+        KEYS[Object.keys(KEYS).find((k) => KEYS[k].id === newKey)].name
+      }`;
+    }
+    return null;
+  };
+
+  // 🔥 STORY DECISIONS (Floor 15)
+  const makeDecision = (choice) => {
+    setEchoChoice(choice);
+    localStorage.setItem("ernie_echo", choice);
+
+    if (choice === "save") {
+      setTrialResult("ТЫ СОХРАНИЛ ЭТО. ЭРНИ ЗАПОМНИТ.");
+      triggerFlash("green");
+    } else {
+      setTrialResult("ТЫ ПОГЛОТИЛ ЭТО. +30 ЭНЕРГИИ.");
+      setEnergy((e) => Math.min(e + 30, max));
+      triggerFlash("red");
+    }
+    setTimeout(() => ascend(), 1500);
+  };
+
+  const ascend = () => {
+    if (!canAscend || phase !== "floor") return;
+    setPhase("ascending");
+    setEnergy((e) => e - cost);
+    setTrialResult(null);
+    setIsHiddenFloor(false);
+
+    const loot = tryLootKey();
+    if (loot) setTimeout(() => setTrialResult(loot), 1500);
+
+    const nextFloor = floor + 1;
+    const isBadFloor = [2, 8, 15, 20, 42].includes(nextFloor);
+    if (isBadFloor) {
+      setIsLightFailure(true);
+      if (navigator.vibrate) navigator.vibrate([50, 100, 50, 100]);
+    } else {
+      if (navigator.vibrate) navigator.vibrate(100);
+    }
+
+    setTimeout(() => {
+      setFloor((f) => Math.min(f + 1, 100));
+      setPhase("floor");
+      setIsLightFailure(false);
+      processEffects();
+      if (floor + 1 >= 100) setPhase("won");
+    }, 2000);
+  };
+
+  const rest = () => {
+    setPhase("resting");
+    triggerFlash("green");
+    setRestCount((c) => c + 1); // Track Rest
+    localStorage.setItem("ernie_rest", restCount + 1);
+    setTimeout(() => {
+      setEnergy((e) => Math.min(e + 15, max));
+      setPhase("floor");
+    }, 2000);
+  };
+
+  const tryRisk = () => {
+    if (energy < 20) return;
+    const stake = Math.floor(energy * 0.4);
+    setEnergy((e) => e - stake);
+    setRiskCount((c) => c + 1); // Track Risk
+    localStorage.setItem("ernie_risk", riskCount + 1);
+
+    if (Math.random() > 0.45) {
+      const reward = stake * 2;
+      triggerFlash("green");
+      setEnergy((e) => Math.min(e + reward, max));
+      setTrialResult(`Удача! +${reward} энергии.`);
+      const loot = tryLootKey();
+      if (loot) setTimeout(() => setTrialResult(loot), 1500);
+    } else {
+      triggerFlash("red");
+      setTrialResult(`Провал. -${stake} энергии.`);
+    }
+  };
+
+  const searchKey = () => {
+    triggerFlash("green");
+    setEnergy((e) => Math.max(0, e - 20));
+    setHasKey(true);
+    setTrialResult("Ты нашёл Ключ.");
+  };
+
+  const answerPhone = () => {
+    if (floor === 5) {
+      setRiddleState("active");
+    } else {
+      setRiddleState("static");
+      triggerFlash("red");
+      if (navigator.vibrate) navigator.vibrate([50, 50, 50, 50, 500]);
+      setIsLightFailure(true);
+      setTimeout(() => {
+        ascend();
+        setIsLightFailure(false);
+      }, 2000);
+    }
+  };
+
+  const solveRiddle = (isCorrect) => {
+    setRiddleState("solved");
+    if (isCorrect) {
+      triggerFlash("green");
+      setTrialResult("Эрни: 'Верно.' (+30)");
+      setEnergy((e) => Math.min(e + 30, max));
+    } else {
+      triggerFlash("red");
+      setTrialResult("Эрни: 'Ошибка.' (-20)");
+      setEnergy((e) => Math.max(0, e - 20));
+    }
+    setTimeout(() => {
+      ascend();
+    }, 2000);
+  };
+
+  const descendToArchive = () => {
+    triggerFlash("red");
+    setPhase("descending");
+    setTimeout(() => {
+      setFloor(50);
+      setEnergy(100);
+      setPhase("floor");
+      setLoopCount((c) => c + 1);
+    }, 2000);
+  };
+
+  const enterSecretRoom = () => setPhase("won");
+  const rebootGame = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+  const handleStart = () => setAppState("game");
+
+  const toggleDev = () => {
+    setDevClicks((c) => c + 1);
+    if (devClicks + 1 >= 3) {
+      setShowDev(!showDev);
+      setDevClicks(0);
+    }
+  };
+  const handleDevJump = (e) => {
+    e.preventDefault();
+    const f = Number(devJump);
+    if (f > 0 && f <= 100) {
+      setFloor(f);
+      setPhase("floor");
+      setDevJump("");
+      if (f === 100) setPhase("won");
+    }
+  };
+  const debugAddKey = () => {
+    const keys = ["silence", "mirror", "insight", "architect", "hidden"];
+    setInventory((prev) => [
+      ...prev,
+      keys[Math.floor(Math.random() * keys.length)],
+    ]);
+  };
+
+  // 6. EFFECTS
+  useEffect(() => {
+    setTimeout(() => {
+      const savedFloor = Number(localStorage.getItem("ernie_floor"));
+      if (savedFloor > 1) {
+        setAppState("game");
+        setActiveEffects((prev) => {
+          const clean = {};
+          Object.keys(prev).forEach((k) => {
+            if (prev[k] > 0) clean[k] = prev[k];
+          });
+          return clean;
+        });
+      } else {
+        setAppState("intro");
+        setTimeout(() => setIntroStep(1), 500);
+      }
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    if (appState === "game") {
+      localStorage.setItem("ernie_floor", floor);
+      localStorage.setItem("ernie_energy", energy);
+      localStorage.setItem("ernie_key", hasKey);
+      localStorage.setItem("ernie_loop", loopCount);
+      localStorage.setItem("ernie_inventory", JSON.stringify(inventory));
+      localStorage.setItem("ernie_effects", JSON.stringify(activeEffects));
+      localStorage.setItem("ernie_mod_energy", maxEnergyMod);
+      localStorage.setItem("ernie_mod_cost", costMod);
+      localStorage.setItem("ernie_risk", riskCount);
+      localStorage.setItem("ernie_rest", restCount);
+      localStorage.setItem("ernie_echo", echoChoice);
+    }
+  }, [
+    floor,
+    energy,
+    hasKey,
+    loopCount,
+    inventory,
+    activeEffects,
+    maxEnergyMod,
+    costMod,
+    appState,
+    riskCount,
+    restCount,
+    echoChoice,
+  ]);
+
+  useEffect(() => {
+    if (
+      appState === "game" &&
+      energy <= 0 &&
+      phase !== "dead" &&
+      phase !== "won"
+    ) {
+      setTimeout(() => setPhase("dead"), 500);
+    }
+  }, [energy, phase, appState]);
+
+  useEffect(() => {
+    if (floor === 5 || floor === 13 || floor === 44 || floor === 66)
+      setRiddleState("ringing");
+    else setRiddleState("done");
+  }, [floor]);
+
+  // 🔥 7. NARRATIVE ENGINE + EVENTS
+  useEffect(() => {
+    let txt = "";
+    if (isHiddenFloor) txt = "ЭТОГО ЭТАЖА НЕТ В ПРОТОКОЛЕ.";
+    else if (activeEffects.silence) txt = "...";
+    else if (activeEffects.insight)
+      txt = PHRASES.INSIGHT[Math.floor(Math.random() * PHRASES.INSIGHT.length)];
+    else if (activeEffects.mirror)
+      txt = PHRASES.MIRROR[Math.floor(Math.random() * PHRASES.MIRROR.length)];
+    else if (phase === "ascending")
+      txt = isLightFailure ? "СБОЙ ПИТАНИЯ..." : "▲ ...";
+    else if (phase === "descending") txt = "▼ СБОЙ...";
+    else if (phase === "resting") txt = "Зарядка...";
+    else if (trialResult) txt = trialResult;
+    else if (energy <= 20 && floor !== 42) txt = "ВНИМАНИЕ: Энергия на исходе.";
+    // --- SPECIAL FLOORS ---
+    else if (floor === 1) txt = "Этаж 0. Начало.";
+    else if (floor === 5) {
+      txt =
+        riddleState === "ringing"
+          ? "ВХОДЯЩИЙ ЗВОНОК..."
+          : "Эрни: 'Я принадлежу тебе...'";
+    }
+    // EVENT 15: CHOICE
+    else if (floor === 15) {
+      txt = echoChoice
+        ? "Ты сделал выбор."
+        : "Ты нашел Сгусток Памяти. Он теплый.";
+    }
+    // EVENT 34: ECHO
+    else if (floor === 34) {
+      txt =
+        echoChoice === "save"
+          ? "ЭХО: Тот Сгусток Памяти... Он защищает тебя от холода."
+          : "ЭХО: Тот Сгусток Памяти... Он исчез внутри тебя без следа.";
+    }
+    // EVENT 42: GLITCH
+    else if (floor === 42) {
+      txt = "КРИТИЧЕСКАЯ ОШИБКА. ЭНЕРГИЯ: 0. СИСТЕМА ОСТАНОВЛЕНА.";
+    }
+    // EVENT 50: TRUTH ROOM
+    else if (floor === 50) {
+      const ratio = riskCount / (restCount || 1);
+      if (ratio > 2)
+        txt = "КОМНАТА ПРАВДЫ: Ты зависим от риска. Статистика подтверждает.";
+      else if (ratio < 0.5)
+        txt = "КОМНАТА ПРАВДЫ: Ты боишься жить. Слишком много отдыха.";
+      else txt = "КОМНАТА ПРАВДЫ: Ты ищешь баланс. Но его здесь нет.";
+    } else if (floor === 100) txt = hasKey ? "КЛЮЧ ПРИНЯТ." : "ТУПИК.";
+    else {
+      let cat = "DEFAULT";
+      if (floor <= 10) cat = "CABIN";
+      else if (floor <= 20) cat = "LAB";
+      else if (floor <= 30) cat = "LOFT";
+      else if (floor <= 40) cat = "GARDEN";
+      else if (floor <= 50) cat = "OFFICE";
+      else if (floor <= 60) cat = "SERVERS";
+      else if (floor <= 70) cat = "OBSERVATORY";
+      else if (floor <= 80) cat = "MIRROR";
+      else if (floor <= 90) cat = "GLITCH";
+
+      const opts = PHRASES[cat] || PHRASES.DEFAULT;
+      txt = opts[Math.floor(Math.random() * opts.length)];
+    }
+    setCurrentText(txt);
+  }, [
+    floor,
+    phase,
+    energy,
+    isLightFailure,
+    activeEffects,
+    trialResult,
+    riddleState,
+    hasKey,
+    isHiddenFloor,
+    echoChoice,
+    riskCount,
+    restCount,
+  ]);
+
+  /* --- RENDER --- */
+  if (appState === "loading")
+    return <div style={S.loadingScreen}>INITIALIZING...</div>;
+  if (appState === "intro")
+    return (
+      <div style={S.introContainer}>
+        <div style={S.introText}>{introText}</div>
+        {introDone && (
+          <button onClick={handleStart} style={S.introBtn}>
+            [ ДА ]
+          </button>
+        )}
+      </div>
+    );
+  if (phase === "won")
+    return (
+      <div style={S.winContainer}>
+        <div style={S.winContent}>
+          <h1 style={S.winTitle}>ЦИКЛ РАЗОРВАН</h1>
+          <button onClick={rebootGame} style={S.rebootBtn}>
+            [ ПЕРЕЗАГРУЗИТЬ ]
+          </button>
+        </div>
+      </div>
+    );
+
+  const bg = isHiddenFloor
+    ? IMG.LIMIT
+    : phase === "descending"
+    ? IMG.GLITCH
+    : isLightFailure
+    ? IMG.GLITCH
+    : phase === "ascending"
+    ? IMG.CABIN
+    : IMG[zone.img];
+
+  return (
+    <div
+      style={{
+        ...S.gameContainer,
+        background: isHiddenFloor ? "#FFF" : "#050505",
+      }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700;800&display=swap');
+        @keyframes shake { 0%,100%{transform:translate(0)} 25%{transform:translate(-2px,1px)} 75%{transform:translate(2px,-1px)} }
+        body { background: #000; user-select: none; }
+        .cursor { display: inline-block; width: 8px; height: 12px; background: ${
+          isInsight ? "#00FFFF" : "#a64444"
+        }; animation: blink 1s infinite; margin-left: 4px; vertical-align: middle; }
+        @keyframes blink { 50% { opacity: 0; } }
+      `}</style>
+
+      <button onClick={toggleDev} style={S.devTrigger}>
+        [DEV]
+      </button>
+      {showDev && (
+        <div style={S.devPanel}>
+          <form onSubmit={handleDevJump} style={{ display: "flex" }}>
+            <input
+              value={devJump}
+              onChange={(e) => setDevJump(e.target.value)}
+              style={S.devInput}
+              placeholder="#"
+            />
+            <button>GO</button>
+          </form>
+          <button onClick={() => setEnergy(max)} style={{ marginLeft: 5 }}>
+            ⚡
+          </button>
+          <button onClick={debugAddKey} style={{ marginLeft: 5 }}>
+            +K
+          </button>
+        </div>
+      )}
+
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 999,
+          background:
+            fxFlash === "red"
+              ? "rgba(255,0,0,0.2)"
+              : fxFlash === "green"
+              ? "rgba(0,255,0,0.1)"
+              : "transparent",
+          transition: "background 0.2s",
+        }}
+      />
+
+      {!isHiddenFloor && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url(${bg})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            filter: isInsight
+              ? "grayscale(100%) contrast(1.2) hue-rotate(180deg)"
+              : phase === "ascending"
+              ? "brightness(0.4)"
+              : "brightness(0.65)",
+            animation:
+              phase === "ascending" ? "shake 0.15s linear infinite" : "none",
+          }}
+        />
+      )}
+
+      <div
+        style={{
+          position: "absolute",
+          top: 40,
+          left: 20,
+          right: 20,
+          zIndex: 40,
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <div>
+          <EnergyPulse energy={energy} max={max} isInsight={isInsight} />
+          <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
+            {Object.keys(activeEffects).map((k) => (
+              <span
+                key={k}
+                style={{ fontSize: 10, color: isInsight ? "#0FF" : "#888" }}
+              >
+                {KEYS[k.toUpperCase()].icon} {activeEffects[k]}
+              </span>
+            ))}
+          </div>
+        </div>
+        <FloorStack
+          floor={floor}
+          zoneLabel={isHiddenFloor ? "ПУСТОТА" : zone.label}
+          zoneColor={zone.color}
+          isGlitching={isLightFailure}
+        />
+      </div>
+
+      {(showBag || showArchitectMenu) && (
+        <div style={S.bagOverlay}>
+          <div style={S.bagContent}>
+            {showArchitectMenu ? (
+              <>
+                <div style={{ marginBottom: 15, color: "#E0C068" }}>
+                  ВЫБОР АРХИТЕКТОРА
+                </div>
+                <button
+                  onClick={() => applyArchitect("cost")}
+                  style={S.keyItemBtn}
+                >
+                  ОПТИМИЗАЦИЯ (-20 К ЦЕНЕ)
+                </button>
+                <button
+                  onClick={() => applyArchitect("max")}
+                  style={S.keyItemBtn}
+                >
+                  РАСШИРЕНИЕ БАКА (+100)
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{ marginBottom: 15 }}>СУМКА</div>
+                {inventory.map((k, i) => {
+                  const d = Object.values(KEYS).find((x) => x.id === k);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => useKey(k)}
+                      style={S.keyItemBtn}
+                    >
+                      <div>{d.name}</div>
+                      <div style={{ fontSize: 9, color: "#888" }}>{d.desc}</div>
+                    </button>
+                  );
+                })}
+                <button onClick={() => setShowBag(false)} style={S.closeBagBtn}>
+                  ЗАКРЫТЬ
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 40,
+          padding: "0 20px 40px",
+          background: "linear-gradient(to top, rgba(0,0,0,0.9), transparent)",
+        }}
+      >
+        <div
+          onClick={toggleDev}
+          style={{
+            ...S.terminalBox,
+            borderLeft: isInsight ? "2px solid #0FF" : "2px solid #555",
+          }}
+        >
+          <div
+            style={{
+              color: isInsight ? "#0FF" : "#E94560",
+              fontSize: 8,
+              fontWeight: "bold",
+              marginBottom: 4,
+            }}
+          >
+            {isInsight
+              ? "SYSTEM_ANALYSIS"
+              : isLightFailure
+              ? "ERR_CONNECTION"
+              : "ERNIE"}
+          </div>
+          <div
+            style={{
+              color: isInsight ? "#AADDFF" : "#ccc",
+              fontSize: 12,
+              lineHeight: 1.4,
+            }}
+          >
+            {displayed}
+            {done && <span className="cursor" />}
+          </div>
+        </div>
+
+        {done && phase === "floor" && (
+          <div
+            style={{
+              animation: "fadeUp 0.4s ease-out",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            {inventory.length > 0 && (
+              <button onClick={() => setShowBag(true)} style={S.bagBtn}>
+                СУМКА [{inventory.length}]
+              </button>
+            )}
+
+            {floor === 5 && riddleState === "ringing" ? (
+              <button onClick={answerPhone} style={S.rustPulseBtn}>
+                📞 ОТВЕТИТЬ
+              </button>
+            ) : floor === 5 && riddleState === "active" ? (
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => solveRiddle(true)} style={S.subBtn}>
+                  ИМЯ
+                </button>
+                <button onClick={() => solveRiddle(false)} style={S.subBtn}>
+                  СУДЬБА
+                </button>
+              </div>
+            ) : floor === 15 && !echoChoice ? (
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => makeDecision("save")} style={S.subBtn}>
+                  СОХРАНИТЬ
+                </button>
+                <button onClick={() => makeDecision("take")} style={S.keyBtn}>
+                  ПОГЛОТИТЬ
+                </button>
+              </div>
+            ) : floor === 100 ? (
+              hasKey ? (
+                <button onClick={enterSecretRoom} style={S.mainBtn}>
+                  ВОЙТИ
+                </button>
+              ) : (
+                <button onClick={descendToArchive} style={S.failBtn}>
+                  ВЕРНУТЬСЯ
+                </button>
+              )
+            ) : (
+              <>
+                <button
+                  onClick={ascend}
+                  disabled={!canAscend}
+                  style={{
+                    ...(canAscend ? S.mainBtn : S.disabledBtn),
+                    opacity: floor === 42 ? 0 : 1,
+                  }}
+                >
+                  ▲ ПОДЪЁМ
+                </button>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {floor === 50 ? null : (
+                    <button onClick={rest} style={S.subBtn}>
+                      ОТДЫХ
+                    </button>
+                  )}
+                  {floor === 50 && !hasKey && loopCount > 0 ? (
+                    <button onClick={searchKey} style={S.keyBtn}>
+                      ИСКАТЬ КЛЮЧ
+                    </button>
+                  ) : (
+                    <button
+                      onClick={tryRisk}
+                      disabled={energy < 20}
+                      style={energy >= 20 ? S.subBtn : S.disabledSubBtn}
+                    >
+                      РИСК
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* --- STYLES --- */
+const S = {
+  gameContainer: {
+    width: "100%",
+    maxWidth: 420,
+    margin: "0 auto",
+    height: "100dvh",
+    position: "relative",
+    overflow: "hidden",
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  introContainer: {
+    width: "100%",
+    height: "100dvh",
+    background: "#000",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  introText: {
+    color: "#ccc",
+    fontSize: "14px",
+    letterSpacing: "3px",
+    marginBottom: "30px",
+  },
+  introBtn: {
+    background: "transparent",
+    border: "1px solid #333",
+    color: "#666",
+    padding: "10px 20px",
+    fontSize: "10px",
+    cursor: "pointer",
+  },
+  loadingScreen: {
+    width: "100%",
+    height: "100dvh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#000",
+    color: "#666",
+  },
+  terminalBox: {
+    background: "rgba(0,0,0,0.8)",
+    padding: "12px 14px",
+    marginBottom: 20,
+    minHeight: 60,
+    backdropFilter: "blur(4px)",
+  },
+  winContainer: {
+    width: "100%",
+    height: "100dvh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#fff",
+    color: "#000",
+  },
+  mainBtn: {
+    width: "100%",
+    padding: "16px",
+    background: "rgba(0,0,0,0.6)",
+    border: "1px solid #a64444",
+    color: "#a64444",
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  disabledBtn: {
+    width: "100%",
+    padding: "16px",
+    background: "transparent",
+    border: "1px solid #333",
+    color: "#444",
+    fontSize: 12,
+  },
+  subBtn: {
+    flex: 1,
+    padding: "12px",
+    background: "rgba(0,0,0,0.6)",
+    border: "1px solid #333",
+    color: "#888",
+    fontSize: 10,
+    cursor: "pointer",
+  },
+  disabledSubBtn: {
+    flex: 1,
+    padding: "12px",
+    background: "transparent",
+    border: "1px solid #333",
+    color: "#333",
+    fontSize: 10,
+  },
+  keyBtn: {
+    flex: 1,
+    padding: "12px",
+    background: "rgba(224, 192, 104, 0.1)",
+    border: "1px solid #E0C068",
+    color: "#E0C068",
+    fontSize: 10,
+    cursor: "pointer",
+  },
+  bagBtn: {
+    width: "100%",
+    padding: "10px",
+    background: "transparent",
+    border: "1px solid #333",
+    color: "#888",
+    fontSize: "10px",
+    cursor: "pointer",
+  },
+  bagOverlay: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(0,0,0,0.95)",
+    zIndex: 100,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bagContent: { width: "80%", textAlign: "center", color: "#fff" },
+  keyItemBtn: {
+    width: "100%",
+    padding: "15px",
+    background: "#111",
+    border: "1px solid #444",
+    color: "#ccc",
+    marginBottom: "10px",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  closeBagBtn: {
+    marginTop: "20px",
+    background: "transparent",
+    border: "none",
+    color: "#666",
+    cursor: "pointer",
+  },
+  devTrigger: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    zIndex: 10000,
+    background: "rgba(0,0,0,0.5)",
+    border: "1px solid #0f0",
+    color: "#0f0",
+    fontSize: "10px",
+    padding: "5px",
+    cursor: "pointer",
+    opacity: 0.5,
+  },
+  devPanel: {
+    position: "absolute",
+    top: 40,
+    left: 10,
+    right: 10,
+    zIndex: 9999,
+    background: "rgba(0, 50, 0, 0.9)",
+    borderBottom: "1px solid #0f0",
+    padding: "8px",
+    display: "flex",
+    gap: "5px",
+    alignItems: "center",
+  },
+  devInput: {
+    width: "40px",
+    background: "#000",
+    color: "#0f0",
+    border: "1px solid #0f0",
+    fontSize: "10px",
+  },
+  devBtn: {
+    background: "#002200",
+    color: "#0f0",
+    border: "1px solid #0f0",
+    fontSize: "10px",
+    cursor: "pointer",
+  },
+  rustPulseBtn: {
+    width: "100%",
+    padding: "16px",
+    background: "rgba(166, 68, 68, 0.2)",
+    border: "1px solid #E94560",
+    color: "#E94560",
+    fontSize: 12,
+    cursor: "pointer",
+    animation: "pulse 1s infinite",
+    fontWeight: "bold",
+  },
+  failBtn: {
+    width: "100%",
+    padding: "16px",
+    background: "rgba(233,69,96,0.1)",
+    border: "1px solid #E94560",
+    color: "#E94560",
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  rebootBtn: {
+    background: "#000",
+    color: "#fff",
+    border: "none",
+    padding: "15px 30px",
+    fontSize: "12px",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+};
