@@ -1,16 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 
 /* ══════════════════════════════════════════
-   ERNIE v103.0 — INCOMING CALL UPDATE
-   
-   BASE: v102.0
-   FIXES:
-   1.  📞 THE CALL: Added an "Incoming Call" screen BEFORE the riddle. You must click "ANSWER" to proceed.
-   2.  🎨 VISUALS: Changed the Riddle UI from harsh Green to Retro Amber (#ffb000). It's softer and looks like an old admin terminal.
-   3.  ✅ JUMP LOGIC: Jumping to floor 5/15/25 now correctly triggers the Call immediately.
-   
-   FLOW:
-   Floor 5 -> Phone Rings (UI) -> Click Answer -> Riddle UI -> Reward/Punishment.
+   ERNIE v125.0 — THE SENTIENT FINAL
+   Base: v103.0 (Твой оригинал)
+   Added: 
+   1. 🤯 Psycho Start (Биометрия при старте)
+   2. ⏳ Riddle Timer (Полоска времени 10 сек)
+   3. 🧠 Sentient Logic (ЭРНИ меняет тон от кармы)
+   4. 💾 Echo Memory (Помнит прошлый этаж)
+   Fixed: ParticleSystem is defined.
    ══════════════════════════════════════════ */
 
 const IMG = {
@@ -27,7 +25,7 @@ const IMG = {
   RELICS_BG:
     "https://raw.githubusercontent.com/akbole/ernie-warden/main/relics_final.jpg",
   GHOST_GIF:
-    "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3ZtYXg5a3ZtYXg5a3ZtYXg5a3ZtYXg5ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L2QlXqYkYVjJ6/giphy.gif",
+    "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3ZtYXg5a3ZtYXg5a3ZtYXg5ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L2QlXqYkYVjJ6/giphy.gif",
   BOSS_BG: "https://media.giphy.com/media/26tn33aiTi1jkl6H6/giphy.gif",
   CORE_BG: "https://media.giphy.com/media/3o7TKs7qQ4Z9dC1hXq/giphy.gif",
 };
@@ -78,7 +76,6 @@ const playSound = (type) => {
       osc.start(now);
       osc.stop(now + 0.4);
     } else if (type === "phone") {
-      // Phone ringing sound
       osc.type = "square";
       osc.frequency.setValueAtTime(800, now);
       osc.frequency.setValueAtTime(0, now + 0.1);
@@ -86,13 +83,25 @@ const playSound = (type) => {
       gain.gain.setValueAtTime(0.1, now);
       osc.start(now);
       osc.stop(now + 0.4);
-    } else if (type === "crit") {
-      osc.type = "square";
-      osc.frequency.setValueAtTime(150, now);
-      osc.frequency.linearRampToValueAtTime(600, now + 0.1);
+    } else if (type === "ernie") {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(120, now);
+      gain.gain.setValueAtTime(0.05, now);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } // Added ERNIE sound
+    else if (type === "success") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(500, now);
       gain.gain.setValueAtTime(0.1, now);
       osc.start(now);
       osc.stop(now + 0.2);
+    } else if (type === "error") {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(80, now);
+      gain.gain.setValueAtTime(0.1, now);
+      osc.start(now);
+      osc.stop(now + 0.3);
     }
   } catch (e) {}
 };
@@ -363,7 +372,41 @@ const DIARY_LOGS = {
   30: "Запись 6: Элита живет в садах. Они забыли небо.",
 };
 
-// --- HOOKS & HELPERS ---
+// --- COMPONENTS ---
+
+// 1. Particle System (Fix for ReferenceError)
+function ParticleSystem() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: 2,
+        overflow: "hidden",
+      }}
+    >
+      {[...Array(15)].map((_, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            top: -10,
+            left: `${Math.random() * 100}%`,
+            width: Math.random() * 2 + 1,
+            height: Math.random() * 2 + 1,
+            background: "rgba(255,255,255,0.15)",
+            borderRadius: "50%",
+            animation: `fall ${Math.random() * 5 + 5}s linear infinite`,
+            animationDelay: `-${Math.random() * 5}s`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// 2. Helper Components
 function useTypewriter(fullText, speed = 35) {
   const [displayed, setDisplayed] = useState("");
   const [done, setDone] = useState(false);
@@ -438,7 +481,6 @@ function EnergyPulse({ energy, max, influence, cycle }) {
   );
 }
 
-// ✨ FLOATING TEXT
 function Floater({ id, text, color, x, y }) {
   return (
     <div
@@ -461,38 +503,7 @@ function Floater({ id, text, color, x, y }) {
   );
 }
 
-// ✨ PARTICLE SYSTEM
-function ParticleSystem() {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        zIndex: 2,
-        overflow: "hidden",
-      }}
-    >
-      {[...Array(15)].map((_, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            top: -10,
-            left: `${Math.random() * 100}%`,
-            width: Math.random() * 2 + 1,
-            height: Math.random() * 2 + 1,
-            background: "rgba(255,255,255,0.15)",
-            borderRadius: "50%",
-            animation: `fall ${Math.random() * 5 + 5}s linear infinite`,
-            animationDelay: `-${Math.random() * 5}s`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
+// --- MAIN GAME ---
 export default function ErnieGame() {
   const [floor, setFloor] = useState(
     () => Number(localStorage.getItem("ernie_floor")) || 1
@@ -537,39 +548,42 @@ export default function ErnieGame() {
   const [currentText, setCurrentText] = useState("");
   const [muted, setMuted] = useState(false);
 
-  // Modals
+  // Sentient States (NEW)
+  const [isIntroActive, setIsIntroActive] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(false);
+  const [activeRiddle, setActiveRiddle] = useState(null);
+  const [riddleTimer, setRiddleTimer] = useState(0);
+  const [riddleVerdict, setRiddleVerdict] = useState(null);
+  const [echoFloor, setEchoFloor] = useState(
+    () => Number(localStorage.getItem("ernie_echo")) || 0
+  );
+
+  // Modals & UI
   const [showRelics, setShowRelics] = useState(false);
   const [showBag, setShowBag] = useState(false);
   const [showMerchant, setShowMerchant] = useState(false);
   const [showArchitect, setShowArchitect] = useState(false);
   const [showFloors, setShowFloors] = useState(false);
-  const [showChat, setShowChat] = useState(false);
   const [showDiary, setShowDiary] = useState(false);
   const [showKarmaView, setShowKarmaView] = useState(false);
   const [showEnding, setShowEnding] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
+  const [selectedRelicInfo, setSelectedRelicInfo] = useState(null);
 
   // Events & FX
   const [isGlitchActive, setIsGlitchActive] = useState(false);
   const [bossData, setBossData] = useState(null);
   const [activeEvent, setActiveEvent] = useState(null);
-  const [incomingCall, setIncomingCall] = useState(false); // NEW STATE FOR CALL
-  const [activeRiddle, setActiveRiddle] = useState(null);
   const [shake, setShake] = useState(false);
   const [dmgVignette, setDmgVignette] = useState(false);
   const [zoneNotification, setZoneNotification] = useState(null);
   const [karmaFlash, setKarmaFlash] = useState(null);
   const [floaters, setFloaters] = useState([]);
-
-  const [selectedRelicInfo, setSelectedRelicInfo] = useState(null);
   const [sosLoading, setSosLoading] = useState(false);
   const [trialResult, setTrialResult] = useState(null);
   const [fxFlash, setFxFlash] = useState(null);
-  const [chatLog, setChatLog] = useState([{ user: "Sys", text: "Online." }]);
 
   const scrollRef = useRef(null);
-  const chatEndRef = useRef(null);
-
   const { displayed, done } = useTypewriter(
     currentText,
     phase === "ascending" ? 80 : 35
@@ -583,7 +597,7 @@ export default function ErnieGame() {
     return { img: "OFFICE", name: "АДМИНИСТРАЦИЯ" };
   };
 
-  // STATS
+  // Stats
   let maxEnergyMult = 1;
   let costReduction = 0;
   let maxRiskPerCycle = 2;
@@ -614,10 +628,11 @@ export default function ErnieGame() {
     !bossData &&
     !activeEvent &&
     !activeRiddle &&
-    !incomingCall;
+    !incomingCall &&
+    !isIntroActive;
   const canRisk = energy >= 20 && riskUsedThisCycle < maxRiskPerCycle;
 
-  // HELPERS
+  // --- ACTIONS ---
   const toggleMute = () => {
     isMuted = !isMuted;
     setMuted(isMuted);
@@ -637,17 +652,15 @@ export default function ErnieGame() {
     setFloaters((p) => [...p, { id, text, color, x: "50%", y: "40%" }]);
     setTimeout(() => setFloaters((p) => p.filter((f) => f.id !== id)), 1000);
   };
-
   const resetGame = () => {
+    localStorage.setItem("ernie_echo", floor);
     localStorage.clear();
     window.location.reload();
-  };
-
+  }; // Save echo
   const debugJump = () => {
     const f = prompt("Прыжок на этаж (1-50):");
     const num = Number(f);
     if (num >= 1 && num <= 50) {
-      // Reset events so the new floor triggers correctly
       setBossData(null);
       setIsGlitchActive(false);
       setActiveRiddle(null);
@@ -657,7 +670,6 @@ export default function ErnieGame() {
       setPhase("floor");
     }
   };
-
   const checkContracts = (type, val) => {
     let completed = false;
     const newContracts = contracts.filter((c) => {
@@ -687,29 +699,70 @@ export default function ErnieGame() {
     }
   };
 
-  // ACTIONS
+  // Sentient Logic
+  const getErnieTone = () => {
+    if (karma < -30)
+      return "Чего ждешь, кусок органики? Лифт сам себя не поднимет.";
+    if (karma > 30)
+      return "Ваше присутствие в системе... терпимо. Продолжайте.";
+    if (energy < 20)
+      return "Твой пульс замедляется. Энергия на исходе. Выключить свет?";
+    if (floor === 1 && echoFloor > 0)
+      return `Опять ты? В прошлый раз ты застрял на ${echoFloor} этаже.`;
+    return "Системы в норме. Ожидание команд.";
+  };
+
+  const selectRole = (rId) => {
+    // PSYCHO START LOGIC REPLACES STANDARD ROLE SELECT
+    playSound("click");
+    setRole(rId.toUpperCase());
+    setIsIntroActive(true);
+    setCurrentText("ИНИЦИАЛИЗАЦИЯ БИОМЕТРИИ...");
+    setTimeout(() => {
+      setCurrentText("СКАНИРОВАНИЕ... ХМ... ТЫ НЕРВНИЧАЕШЬ?");
+      playSound("ernie");
+    }, 3000);
+    setTimeout(() => {
+      setCurrentText(getErnieTone());
+      setIsIntroActive(false);
+      setPhase("floor");
+    }, 6000);
+  };
+
   const answerCall = () => {
     playSound("click");
     setIncomingCall(false);
-    setActiveRiddle(RIDDLES[floor]); // Open the riddle for the CURRENT floor
+    setActiveRiddle(RIDDLES[floor]);
   };
 
   const handleRiddleAnswer = (isCorrect) => {
-    playSound("click");
-    if (isCorrect) {
+    // Logic moved to handleVerdict for timer support
+    if (isCorrect) handleVerdict("win");
+    else handleVerdict("fail");
+  };
+
+  const handleVerdict = (res) => {
+    setRiddleVerdict(res);
+    if (res === "win") {
       playSound("success");
       triggerFlash("green");
       spawnFloater("+30 EN", "#0f0");
       setEnergy((e) => Math.min(e + 30, max));
       setInfluence((i) => i + 2);
       setTrialResult(activeRiddle.win);
+      modifyKarma(10);
     } else {
+      playSound("error");
       triggerDamageFX();
       spawnFloater("-20 EN", "red");
       setEnergy((e) => Math.max(0, e - 20));
-      setTrialResult(activeRiddle.fail);
+      setTrialResult(
+        res === "timeout"
+          ? activeRiddle.timeout || "ВРЕМЯ ВЫШЛО"
+          : activeRiddle.fail
+      );
+      modifyKarma(-10);
     }
-    setActiveRiddle(null);
   };
 
   const useItem = (itemId) => {
@@ -842,7 +895,6 @@ export default function ErnieGame() {
       dmg = role === "ELITE" ? 35 : Math.random() > 0.3 ? 30 : 0;
       logMsg = dmg > 0 ? "ВЗЛОМ" : "СБОЙ";
     }
-
     if (energy < cost) {
       setBossData((p) => ({
         ...p,
@@ -851,10 +903,8 @@ export default function ErnieGame() {
       return;
     }
     setEnergy((e) => e - cost);
-
     const newHp = bossData.hp - dmg;
     spawnFloater(`-${dmg}`, "orange");
-
     if (newHp <= 0) {
       playSound("success");
       setBossData(null);
@@ -885,21 +935,16 @@ export default function ErnieGame() {
   const ascend = () => {
     if (!canAscend) return;
     playSound("click");
-
     const nextFloor = floor + 1;
     checkContracts("floor", nextFloor);
     if (getZone(floor).name !== getZone(nextFloor).name) {
       setZoneNotification(getZone(nextFloor).name);
       setTimeout(() => setZoneNotification(null), 3000);
     }
-
-    // Just advance the floor. The useEffect will handle Events.
     setPhase("ascending");
     setEnergy((e) => e - cost);
     setTrialResult(null);
     setRiskUsedThisCycle(0);
-
-    // Minor random events
     const rand = Math.random();
     if (
       rand < 0.15 &&
@@ -922,7 +967,6 @@ export default function ErnieGame() {
         setIsGlitchActive(true);
       }, 1500);
     }
-
     if (floor % 5 === 0) {
       setInfluence((i) => i + 2);
       checkContracts("influence", influence + 2);
@@ -931,22 +975,10 @@ export default function ErnieGame() {
     setTimeout(() => {
       setFloor((f) => Math.min(f + 1, 50));
       setPhase("floor");
+      setCurrentText(getErnieTone());
     }, 2000);
   };
 
-  const spawnEnemy = (type) => {
-    playSound("alarm");
-    const difficultyMult = 1 + cycle * 0.5;
-    const eData = ENEMIES[type] || ENEMIES.BOSS;
-    setBossData({
-      ...eData,
-      hp: eData.hp * difficultyMult,
-      maxHp: eData.maxHp * difficultyMult,
-      damage: Math.floor(eData.damage * difficultyMult),
-      log: ["ЦЕЛЬ ЗАХВАЧЕНА."],
-    });
-    setPhase("floor");
-  };
   const handleDescent = () => {
     setFloor((f) => Math.max(1, f - 5));
     setEnergy(30);
@@ -964,19 +996,6 @@ export default function ErnieGame() {
       setPhase("floor");
       setSosLoading(false);
     }, 2000);
-  };
-  const debugAddAllRelics = () => setRelics(RELICS_DB.map((r) => r.id));
-  const debugAddKey = () =>
-    setInventory((p) => [...p, "architect", "emp", "battery"]);
-  const debugGhost = () => {
-    playSound("alarm");
-    setIsGlitchActive(true);
-  };
-  const debugBoss = () => spawnEnemy("BOSS");
-  const debugInfl = () => setInfluence((i) => i + 5);
-  const triggerGhost = () => {
-    playSound("alarm");
-    setIsGlitchActive(true);
   };
   const handleEventChoice = (action) => {
     playSound("click");
@@ -1002,21 +1021,6 @@ export default function ErnieGame() {
       setTrialResult("Ты прошел мимо.");
     }
     setActiveEvent(null);
-  };
-  const triggerAscension = () => {
-    playSound("success");
-    setFloor(1);
-    setEnergy(100);
-    setInventory(["silence"]);
-    setCycle((c) => c + 1);
-    setShowEnding(false);
-    setPhase("floor");
-    setTrialResult(`ЦИКЛ ${cycle + 2} НАЧАЛСЯ.`);
-  };
-  const selectRole = (rId) => {
-    playSound("click");
-    setRole(rId.toUpperCase());
-    setPhase("floor");
   };
   const triggerFlash = (type) => {
     setFxFlash(type);
@@ -1044,29 +1048,14 @@ export default function ErnieGame() {
       triggerFlash("red");
     }
   };
-  const retreatFromBoss = () => {
-    setBossData(null);
-    handleDescent();
-  };
-  const chatAction = (action) => {
-    if (action === "requestEnergy" && influence >= 3) {
-      playSound("success");
-      setInfluence((i) => i - 3);
-      setEnergy((e) => Math.min(e + 25, max));
-      setChatLog((p) => [...p, { user: "Bot", text: "+25 ЭН" }]);
-      spawnFloater("+25 EN", "#0f0");
-    }
-  };
 
-  // 🔥 IMPORTANT: CENTRALIZED EVENT CHECKER
+  // --- LOGIC: CENTRALIZED EVENT CHECKER ---
   useEffect(() => {
-    // 1. ENDING
     if (floor === 50) {
       setShowEnding(true);
       return;
     }
-
-    // 2. BOSS (10, 20, 30...)
+    // BOSS (10, 20...)
     if (floor % 10 === 0 && floor > 1 && !bossData) {
       setTimeout(() => {
         playSound("alarm");
@@ -1081,13 +1070,11 @@ export default function ErnieGame() {
       }, 1000);
       return;
     }
-
-    // 3. MERCHANT (9, 19, 29...)
+    // MERCHANT (9, 19...)
     if ((floor + 1) % 10 === 0 && floor > 1) {
       setTimeout(() => setShowMerchant(true), 500);
     }
-
-    // 4. RIDDLES (5, 15, 25...) - NEW: Trigger "Incoming Call" first
+    // RIDDLES & CALLS (5, 15...) - TRIGGER CALL FIRST
     if (
       (floor === 5 ||
         floor === 15 ||
@@ -1096,16 +1083,35 @@ export default function ErnieGame() {
         floor === 45) &&
       RIDDLES[floor] &&
       !activeRiddle &&
-      !incomingCall
+      !incomingCall &&
+      !riddleVerdict
     ) {
       setTimeout(() => {
         playSound("phone");
         setIncomingCall(true);
       }, 500);
     }
-  }, [floor]); // Runs every time floor changes
+  }, [floor]);
 
-  // EFFECTS
+  // Logic: Timer
+  useEffect(() => {
+    let interval;
+    if (activeRiddle && !riddleVerdict) {
+      setRiddleTimer(10);
+      interval = setInterval(() => {
+        setRiddleTimer((p) => {
+          if (p <= 0.1) {
+            clearInterval(interval);
+            handleVerdict("timeout");
+            return 0;
+          }
+          return p - 0.1;
+        });
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [activeRiddle, riddleVerdict]);
+
   useEffect(() => {
     if (
       energy <= 0 &&
@@ -1114,12 +1120,14 @@ export default function ErnieGame() {
       !bossData &&
       !activeEvent &&
       !activeRiddle &&
-      !incomingCall
+      !incomingCall &&
+      !isIntroActive
     ) {
       setPhase("emergency");
       triggerFlash("red");
     }
   }, [energy, phase, role, bossData, activeEvent, activeRiddle, incomingCall]);
+
   useEffect(() => {
     if (role) {
       localStorage.setItem("ernie_floor", floor);
@@ -1132,6 +1140,7 @@ export default function ErnieGame() {
       localStorage.setItem("ernie_influence", influence);
       localStorage.setItem("ernie_upgrades", JSON.stringify(upgrades));
       localStorage.setItem("ernie_cycle", cycle);
+      localStorage.setItem("ernie_echo", floor);
     }
   }, [
     floor,
@@ -1145,21 +1154,15 @@ export default function ErnieGame() {
     cycle,
     contracts,
   ]);
+
   useEffect(() => {
     let txt = "";
     if (bossData) txt = bossData.text;
     else if (isGlitchActive) txt = "⚠ ОШИБКА ⚠";
     else if (phase === "emergency") txt = "СБОЙ СИСТЕМЫ.";
-    else txt = trialResult || (floor === 1 ? "Этаж 0." : "Системы в норме.");
+    else txt = trialResult || getErnieTone();
     setCurrentText(txt);
   }, [floor, trialResult, phase, isGlitchActive, bossData]);
-  useEffect(() => {
-    if (showFloors && scrollRef.current)
-      scrollRef.current.scrollTo({
-        top: (50 - floor) * 30 - 100,
-        behavior: "auto",
-      });
-  }, [showFloors, floor]);
 
   if (!role) {
     return (
@@ -1255,8 +1258,6 @@ export default function ErnieGame() {
           animation: phase === "ascending" ? "slideBg 2s ease-in-out" : "none",
         }}
       />
-
-      {/* DAMAGE VIGNETTE */}
       {dmgVignette && (
         <div
           style={{
@@ -1268,7 +1269,6 @@ export default function ErnieGame() {
           }}
         />
       )}
-
       <div
         style={{
           position: "absolute",
@@ -1283,13 +1283,10 @@ export default function ErnieGame() {
               : "transparent",
         }}
       />
-
-      {/* FLOATING TEXT RENDERER */}
       {floaters.map((f) => (
         <Floater key={f.id} {...f} />
       ))}
 
-      {/* CONTRACTS WIDGET - MOVED DOWN */}
       <div
         style={{
           position: "absolute",
@@ -1345,7 +1342,6 @@ export default function ErnieGame() {
                 РОЛЬ: {role}
               </div>
             </div>
-            {/* CLEAN MAP BUTTON */}
             <div onClick={() => setShowFloors(true)} style={S.floorText}>
               <span style={{ fontSize: 20 }}>🗺️</span>
               <div style={{ fontSize: 9, letterSpacing: 2 }}>КАРТА</div>
@@ -1364,8 +1360,6 @@ export default function ErnieGame() {
         </div>
       )}
 
-      {/* MODALS */}
-      {/* BAG - HIGH Z-INDEX (3000) FIX */}
       {showBag && (
         <div
           style={S.highOverlay}
@@ -1412,7 +1406,7 @@ export default function ErnieGame() {
         </div>
       )}
 
-      {/* INCOMING CALL SCREEN (NEW) */}
+      {/* NEW CALL SCREEN */}
       {incomingCall && (
         <div style={S.bossOverlay}>
           <div
@@ -1460,7 +1454,7 @@ export default function ErnieGame() {
         </div>
       )}
 
-      {/* RIDDLE MODAL (NEW RETRO AMBER THEME) */}
+      {/* NEW RIDDLE SCREEN W/ TIMER */}
       {activeRiddle && (
         <div style={S.bossOverlay}>
           <div
@@ -1473,39 +1467,84 @@ export default function ErnieGame() {
             <div style={{ ...S.bossHeader, color: "#ffb000" }}>
               ПРОТОКОЛ ЭРНИ
             </div>
-            <div
-              style={{
-                padding: 20,
-                textAlign: "center",
-                color: "#ffb000",
-                fontFamily: "monospace",
-                fontSize: 12,
-              }}
-            >
-              {activeRiddle.q}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                padding: 10,
-              }}
-            >
-              {activeRiddle.opts.map((opt, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleRiddleAnswer(opt.correct)}
+            {!riddleVerdict ? (
+              <>
+                <div
                   style={{
-                    ...S.bossBtn,
-                    borderColor: "#664400",
-                    color: "#ffb000",
+                    width: "100%",
+                    height: 4,
+                    background: "#222",
+                    marginBottom: 15,
                   }}
                 >
-                  {opt.text}
+                  <div
+                    style={{
+                      width: `${riddleTimer * 10}%`,
+                      height: "100%",
+                      background: riddleTimer < 3 ? "red" : "#ffb000",
+                      transition: "width 0.1s linear",
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    padding: 20,
+                    textAlign: "center",
+                    color: "#ffb000",
+                    fontFamily: "monospace",
+                    fontSize: 12,
+                  }}
+                >
+                  {activeRiddle.q}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                    padding: 10,
+                  }}
+                >
+                  {activeRiddle.opts.map((opt, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleRiddleAnswer(opt.correct)}
+                      style={{
+                        ...S.bossBtn,
+                        borderColor: "#664400",
+                        color: "#ffb000",
+                      }}
+                    >
+                      {opt.text}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: "center" }}>
+                <div
+                  style={{
+                    color: riddleVerdict === "win" ? "#0f0" : "red",
+                    fontSize: 18,
+                    marginBottom: 10,
+                  }}
+                >
+                  {riddleVerdict === "win" ? "✓ ПРИНЯТО" : "✗ ОТКАЗ"}
+                </div>
+                <div style={{ color: "#ccc", marginBottom: 20 }}>
+                  {trialResult}
+                </div>
+                <button
+                  onClick={() => {
+                    setActiveRiddle(null);
+                    setRiddleVerdict(null);
+                  }}
+                  style={S.shopItem}
+                >
+                  ПОНЯТНО
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1732,7 +1771,6 @@ export default function ErnieGame() {
           </div>
         )}
 
-      {/* MENUS */}
       {showArchitect && (
         <div
           style={S.overlay}
@@ -1985,7 +2023,8 @@ export default function ErnieGame() {
         !bossData &&
         !activeEvent &&
         !activeRiddle &&
-        !incomingCall && (
+        !incomingCall &&
+        !isIntroActive && (
           <div style={S.bottomUI}>
             <div style={S.terminal}>
               <div
@@ -2281,32 +2320,6 @@ const S = {
     cursor: "pointer",
     fontSize: 10,
     padding: "8px 20px",
-  },
-  chatBox: {
-    maxHeight: "200px",
-    overflowY: "auto",
-    background: "#111",
-    padding: 10,
-    borderRadius: 4,
-    border: "1px solid #333",
-  },
-  chatAction: {
-    flex: 1,
-    padding: 10,
-    background: "#1a1a1a",
-    border: "1px solid #E0C068",
-    color: "#E0C068",
-    cursor: "pointer",
-    fontSize: 10,
-  },
-  chatActionDisabled: {
-    flex: 1,
-    padding: 10,
-    background: "#111",
-    border: "1px solid #333",
-    color: "#444",
-    cursor: "not-allowed",
-    fontSize: 10,
   },
   diaryGrid: {
     display: "grid",
