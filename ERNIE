@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 
 /* ══════════════════════════════════════════
-   ERNIE v84.0 — HYBRID RESTORATION
+   ERNIE v103.0 — INCOMING CALL UPDATE
    
-   - RELICS: New "Rusty Metal" Design (Kept as requested).
-   - TOWER: Reverted to simple static background (numbers scroll, image fixed).
-   - DIARY: Reverted to 3x2 Grid with Locks.
-   - KARMA: Reverted to Circle Gauge.
-   - BAG: Reverted to List view.
-   - DEBUG: Added DEBUG buttons back.
+   BASE: v102.0
+   FIXES:
+   1.  📞 THE CALL: Added an "Incoming Call" screen BEFORE the riddle. You must click "ANSWER" to proceed.
+   2.  🎨 VISUALS: Changed the Riddle UI from harsh Green to Retro Amber (#ffb000). It's softer and looks like an old admin terminal.
+   3.  ✅ JUMP LOGIC: Jumping to floor 5/15/25 now correctly triggers the Call immediately.
+   
+   FLOW:
+   Floor 5 -> Phone Rings (UI) -> Click Answer -> Riddle UI -> Reward/Punishment.
    ══════════════════════════════════════════ */
 
 const IMG = {
@@ -20,93 +22,348 @@ const IMG = {
     "https://raw.githubusercontent.com/akbole/ernie-warden/main/garden.jpg",
   OFFICE:
     "https://raw.githubusercontent.com/akbole/ernie-warden/main/office.jpg",
-  // Старый фон башни (один раз)
   TOWER_BG:
     "https://raw.githubusercontent.com/akbole/ernie-warden/main/tower_bg.png",
-  // Новый фон реликвий
   RELICS_BG:
     "https://raw.githubusercontent.com/akbole/ernie-warden/main/relics_final.jpg",
+  GHOST_GIF:
+    "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3ZtYXg5a3ZtYXg5a3ZtYXg5a3ZtYXg5ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L2QlXqYkYVjJ6/giphy.gif",
+  BOSS_BG: "https://media.giphy.com/media/26tn33aiTi1jkl6H6/giphy.gif",
+  CORE_BG: "https://media.giphy.com/media/3o7TKs7qQ4Z9dC1hXq/giphy.gif",
+};
+
+// --- AUDIO ---
+let isMuted = false;
+const playSound = (type) => {
+  if (typeof window === "undefined" || isMuted) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+
+    if (type === "click") {
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(300, now);
+      gain.gain.setValueAtTime(0.05, now);
+      osc.start(now);
+      osc.stop(now + 0.05);
+    } else if (type === "buy") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+      gain.gain.setValueAtTime(0.05, now);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    } else if (type === "boom") {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(100, now);
+      osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);
+      gain.gain.setValueAtTime(0.2, now);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } else if (type === "alarm") {
+      osc.type = "square";
+      osc.frequency.setValueAtTime(150, now);
+      gain.gain.setValueAtTime(0.05, now);
+      osc.start(now);
+      osc.stop(now + 0.5);
+    } else if (type === "quest") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.linearRampToValueAtTime(800, now + 0.2);
+      gain.gain.setValueAtTime(0.1, now);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } else if (type === "phone") {
+      // Phone ringing sound
+      osc.type = "square";
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.setValueAtTime(0, now + 0.1);
+      osc.frequency.setValueAtTime(800, now + 0.2);
+      gain.gain.setValueAtTime(0.1, now);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } else if (type === "crit") {
+      osc.type = "square";
+      osc.frequency.setValueAtTime(150, now);
+      osc.frequency.linearRampToValueAtTime(600, now + 0.1);
+      gain.gain.setValueAtTime(0.1, now);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (e) {}
 };
 
 // --- DATA ---
+const ROLES = {
+  RESIDENT: {
+    id: "resident",
+    name: "РЕЗИДЕНТ",
+    bonus: "БАЛАНС",
+    desc: "Стандартный доступ.",
+  },
+  ELITE: {
+    id: "elite",
+    name: "ЭЛИТА",
+    bonus: "ВЗЛОМ ++",
+    desc: "Эффективность взлома выше.",
+  },
+  LEADER: {
+    id: "leader",
+    name: "ЛИДЕР",
+    bonus: "ВЛИЯНИЕ ++",
+    desc: "Получает больше влияния.",
+  },
+};
+
+const RIDDLES = {
+  5: {
+    q: "Я не живой, но я решаю, кто выживет. Я везде, но у меня нет тела. Кто я?",
+    opts: [
+      { text: "Призрак", correct: false },
+      { text: "ЭРНИ", correct: true },
+      { text: "Лифтер", correct: false },
+    ],
+    win: "ДОСТУП РАЗРЕШЕН.",
+    fail: "ОШИБКА ИДЕНТИФИКАЦИИ.",
+  },
+  15: {
+    q: "Что становится тяжелее, чем выше ты поднимаешься?",
+    opts: [
+      { text: "Гравитация", correct: false },
+      { text: "Воздух", correct: false },
+      { text: "Грехи", correct: true },
+    ],
+    win: "АНАЛИЗ ЗАВЕРШЕН. ПСИХИКА СТАБИЛЬНА.",
+    fail: "ОБНАРУЖЕНА СЛАБОСТЬ.",
+  },
+  25: {
+    q: "У меня есть ключи, но нет замков. У меня есть пространство, но нет комнат.",
+    opts: [
+      { text: "Башня", correct: false },
+      { text: "Клавиатура", correct: true },
+      { text: "Тюрьма", correct: false },
+    ],
+    win: "КОД ПРИНЯТ.",
+    fail: "ДОСТУП ЗАПРЕЩЕН.",
+  },
+  35: {
+    q: "Что нужно сломать, чтобы использовать?",
+    opts: [
+      { text: "Протокол", correct: false },
+      { text: "Яйцо", correct: true },
+      { text: "Тишину", correct: false },
+    ],
+    win: "ТЕСТ ТЬЮРИНГА ПРОЙДЕН.",
+    fail: "ВЫ — МАШИНА.",
+  },
+  45: {
+    q: "Ты видишь выход?",
+    opts: [
+      { text: "Да", correct: false },
+      { text: "Нет", correct: true },
+      { text: "Возможно", correct: false },
+    ],
+    win: "ЧЕСТНОСТЬ ПООЩРЯЕТСЯ.",
+    fail: "ЛОЖЬ ОБНАРУЖЕНА.",
+  },
+};
+
+const CONTRACTS_DB = [
+  { id: "c1", text: "Достичь 15 этажа", type: "floor", target: 15, reward: 5 },
+  {
+    id: "c2",
+    text: "Накопить 15 Влияния",
+    type: "influence",
+    target: 15,
+    reward: 5,
+  },
+  {
+    id: "c3",
+    text: "Использовать 2 предмета",
+    type: "item",
+    target: 2,
+    reward: 4,
+  },
+  { id: "c4", text: "Победить Стража", type: "boss", target: 1, reward: 10 },
+  { id: "c5", text: "Пережить Глитч", type: "glitch", target: 1, reward: 3 },
+];
+
+const ITEMS = {
+  battery: {
+    name: "БАТАРЕЯ",
+    desc: "+40 Энергии",
+    cost: 4,
+    type: "consumable",
+    effect: (s) => s.addEnergy(40),
+  },
+  stim: {
+    name: "СТИМУЛЯТОР",
+    desc: "Сброс Риска",
+    cost: 5,
+    type: "consumable",
+    effect: (s) => s.resetRisk(),
+  },
+  emp: {
+    name: "ЭМИ-ГРАНАТА",
+    desc: "50 Урона врагу",
+    cost: 6,
+    type: "combat",
+    effect: (s) => s.damageEnemy(50),
+  },
+  architect: {
+    name: "КЛЮЧ АРХИТЕКТОРА",
+    desc: "Меню улучшений",
+    type: "key",
+    effect: (s) => s.openArchitect(),
+  },
+  silence: {
+    name: "КЛЮЧ ТИШИНЫ",
+    desc: "Сюжетный предмет",
+    type: "key",
+    effect: () => {},
+  },
+  mirror: {
+    name: "КЛЮЧ ЗЕРКАЛА",
+    desc: "Сюжетный предмет",
+    type: "key",
+    effect: () => {},
+  },
+};
+
+const RANDOM_EVENTS = [
+  {
+    id: "corpse",
+    title: "ТЕЛО В ШАХТЕ",
+    text: "Ты нашел погибшего раннера. У него осталась сумка.",
+    choices: [
+      { text: "ОБЫСКАТЬ (Карма -10, +Предмет)", action: "loot_corpse" },
+      { text: "ПОХОРОНИТЬ (Карма +10)", action: "bury_corpse" },
+    ],
+  },
+  {
+    id: "vending",
+    title: "АВТОМАТ",
+    text: "Древний автомат с энергетиками.",
+    choices: [
+      { text: "КУПИТЬ (3 ВЛ -> +30 ЭН)", action: "buy_drink" },
+      { text: "УЙТИ", action: "leave" },
+    ],
+  },
+];
+
+const ENEMIES = {
+  BOSS: {
+    name: "СИСТЕМА БЕЗОПАСНОСТИ",
+    hp: 100,
+    maxHp: 100,
+    damage: 10,
+    text: "ДОСТУП ЗАПРЕЩЕН.",
+  },
+  DRONE: {
+    name: "ПАТРУЛЬНЫЙ ДРОН",
+    hp: 40,
+    maxHp: 40,
+    damage: 5,
+    text: "ОБНАРУЖЕН НАРУШИТЕЛЬ.",
+  },
+  GLITCH: {
+    name: "ФРАГМЕНТ КОДА",
+    hp: 60,
+    maxHp: 60,
+    damage: 8,
+    text: "010101010...",
+  },
+};
+
+const UPGRADES = [
+  {
+    id: "battery",
+    name: "БАТАРЕЯ",
+    cost: 5,
+    effect: "+20 MAX",
+    code: "maxEnergy",
+  },
+  {
+    id: "motor",
+    name: "МОТОР",
+    cost: 8,
+    effect: "-2 РАСХОД",
+    code: "costReduc",
+  },
+  {
+    id: "firewall",
+    name: "ФАЕРВОЛ",
+    cost: 10,
+    effect: "-% ПРИЗРАК",
+    code: "ghostResist",
+  },
+];
+
 const RELICS_DB = [
   {
     id: "watch",
     icon: "🕰️",
-    name: "ЗАСТЫВШИЕ ЧАСЫ",
-    effect: "ШАНС РИСКА +1",
-    lore: "Стрелки замерли. Время — иллюзия.",
+    name: "ЧАСЫ",
+    effect: "РИСК +1",
+    lore: "Время замерло.",
     bonus: { extraRisk: 1 },
   },
   {
     id: "skull",
     icon: "💀",
-    name: "КЛЮЧ ЧЕРЕПА",
-    effect: "ТАЙНЫ БАШНИ",
-    lore: "Шепчет коды доступа.",
+    name: "ЧЕРЕП",
+    effect: "ТАЙНЫ",
+    lore: "Шепчет коды.",
     bonus: { secretDoor: 100 },
   },
   {
     id: "photo",
     icon: "📷",
-    name: "СТАРОЕ ФОТО",
-    effect: "ЭНЕРГИЯ +10%",
-    lore: "Ты чувствуешь тепло от снимка.",
+    name: "ФОТО",
+    effect: "ЭНЕРГИЯ",
+    lore: "Теплое.",
     bonus: { maxEnergy: 1.1 },
   },
   {
     id: "compass",
     icon: "🧭",
-    name: "КОМПАС ТЕНЕЙ",
-    effect: "ВИДИТ СКРЫТОЕ",
-    lore: "Указывает на сбои в реальности.",
+    name: "КОМПАС",
+    effect: "СБОИ",
+    lore: "Дрожит.",
     bonus: { revealHidden: true },
   },
   {
     id: "scroll",
     icon: "📜",
-    name: "ЧЕРТЕЖИ ЭРНИ",
-    effect: "РАСХОД -5",
-    lore: "Схемы вентиляции лифта.",
+    name: "ЧЕРТЕЖ",
+    effect: "РАСХОД",
+    lore: "Схемы.",
     bonus: { costReduc: 5 },
   },
   {
     id: "chain",
     icon: "⛓️",
-    name: "РЖАВАЯ ЦЕПЬ",
-    effect: "ЗАЩИТА +10",
-    lore: "Связывает тебя с миром.",
+    name: "ЦЕПЬ",
+    effect: "ЗАЩИТА",
+    lore: "Тяжелая.",
     bonus: { defense: 10 },
   },
 ];
 
-const KEYS = {
-  silence: {
-    id: "silence",
-    name: "КЛЮЧ ТИШИНЫ",
-    desc: "Эрни молчит (3 эт).",
-    icon: "🔇",
-  },
-  mirror: {
-    id: "mirror",
-    name: "КЛЮЧ ЗЕРКАЛА",
-    desc: "Чтение мыслей.",
-    icon: "🪞",
-  },
-  insight: {
-    id: "insight",
-    name: "КЛЮЧ ПРОЗРЕНИЯ",
-    desc: "Визор состояния.",
-    icon: "👁",
-  },
-  architect: {
-    id: "architect",
-    name: "КЛЮЧ АРХИТЕКТОРА",
-    desc: "Апгрейд лифта.",
-    icon: "📐",
-  },
+const DIARY_LOGS = {
+  5: "Запись 1: Эрни — это не человек. Это имя на сервере.",
+  10: "Запись 2: Страж на 10-м этаже — это бывший лифтер.",
+  15: "Запись 3: Они говорят, что наверху есть выход.",
+  20: "Запись 4: Мы не поднимаемся. Мы просто ходим по кругу.",
+  25: "Запись 5: Ключ Черепа — это бэкдор создателя.",
+  30: "Запись 6: Элита живет в садах. Они забыли небо.",
 };
 
+// --- HOOKS & HELPERS ---
 function useTypewriter(fullText, speed = 35) {
   const [displayed, setDisplayed] = useState("");
   const [done, setDone] = useState(false);
@@ -130,43 +387,124 @@ function useTypewriter(fullText, speed = 35) {
   return { displayed, done };
 }
 
-function EnergyPulse({ energy, max, karma }) {
+function EnergyPulse({ energy, max, influence, cycle }) {
   const pct = Math.max(0, Math.min(1, energy / max));
   let color = pct < 0.2 ? "#FF0000" : pct < 0.5 ? "#E94560" : "#666";
-  if (karma > 30) color = "#4a8a4a"; // Green for good karma
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <span style={{ fontSize: 11, color }}>⚡</span>
-      <div
-        style={{
-          width: 80,
-          height: 6,
-          background: "rgba(255,255,255,0.1)",
-          borderRadius: 3,
-        }}
-      >
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <span style={{ fontSize: 11, color: "#666" }}>⚡</span>
         <div
           style={{
-            width: `${pct * 100}%`,
-            height: "100%",
-            background: color,
-            transition: "width 0.6s ease",
-            borderRadius: 3,
+            width: 70,
+            height: 8,
+            background: "#111",
+            borderRadius: 4,
+            border: "1px solid #333",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${pct * 100}%`,
+              height: "100%",
+              background: `linear-gradient(90deg, ${color}, #fff)`,
+              transition: "width 0.5s ease",
+            }}
+          />
+        </div>
+        <span style={{ fontSize: 10, color: "#ccc", fontWeight: "bold" }}>
+          {Math.floor(energy)}
+        </span>
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          color: "#E0C068",
+          fontWeight: "bold",
+          border: "1px solid #E0C068",
+          padding: "2px 5px",
+          borderRadius: 4,
+        }}
+      >
+        👑 {influence}
+      </div>
+      {cycle > 0 && (
+        <div style={{ fontSize: 10, color: "#A020F0", fontWeight: "bold" }}>
+          🌀 {cycle}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ✨ FLOATING TEXT
+function Floater({ id, text, color, x, y }) {
+  return (
+    <div
+      key={id}
+      style={{
+        position: "absolute",
+        top: y,
+        left: x,
+        color: color,
+        fontSize: 14,
+        fontWeight: "bold",
+        textShadow: "1px 1px 0 #000",
+        pointerEvents: "none",
+        zIndex: 9999,
+        animation: "floatUp 1s ease-out forwards",
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+// ✨ PARTICLE SYSTEM
+function ParticleSystem() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: 2,
+        overflow: "hidden",
+      }}
+    >
+      {[...Array(15)].map((_, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            top: -10,
+            left: `${Math.random() * 100}%`,
+            width: Math.random() * 2 + 1,
+            height: Math.random() * 2 + 1,
+            background: "rgba(255,255,255,0.15)",
+            borderRadius: "50%",
+            animation: `fall ${Math.random() * 5 + 5}s linear infinite`,
+            animationDelay: `-${Math.random() * 5}s`,
           }}
         />
-      </div>
-      <span style={{ fontSize: 10, color: "#888" }}>{Math.floor(energy)}</span>
+      ))}
     </div>
   );
 }
 
 export default function ErnieGame() {
-  // --- STATE ---
   const [floor, setFloor] = useState(
     () => Number(localStorage.getItem("ernie_floor")) || 1
   );
   const [energy, setEnergy] = useState(
     () => Number(localStorage.getItem("ernie_energy")) || 100
+  );
+  const [influence, setInfluence] = useState(
+    () => Number(localStorage.getItem("ernie_influence")) || 0
+  );
+  const [cycle, setCycle] = useState(
+    () => Number(localStorage.getItem("ernie_cycle")) || 0
   );
   const [relics, setRelics] = useState(
     () => JSON.parse(localStorage.getItem("ernie_relics")) || []
@@ -177,115 +515,449 @@ export default function ErnieGame() {
   const [karma, setKarma] = useState(
     () => Number(localStorage.getItem("ernie_karma")) || 0
   );
+  const [role, setRole] = useState(
+    () => localStorage.getItem("ernie_role") || null
+  );
   const [riskUsedThisCycle, setRiskUsedThisCycle] = useState(
     () => Number(localStorage.getItem("ernie_risk_cycle")) || 0
   );
+  const [upgrades, setUpgrades] = useState(
+    () => JSON.parse(localStorage.getItem("ernie_upgrades")) || {}
+  );
+  const [contracts, setContracts] = useState(
+    () =>
+      JSON.parse(localStorage.getItem("ernie_contracts")) || [
+        CONTRACTS_DB[0],
+        CONTRACTS_DB[1],
+        CONTRACTS_DB[2],
+      ]
+  );
 
-  // UI State
   const [phase, setPhase] = useState("floor");
   const [currentText, setCurrentText] = useState("");
+  const [muted, setMuted] = useState(false);
 
   // Modals
   const [showRelics, setShowRelics] = useState(false);
   const [showBag, setShowBag] = useState(false);
+  const [showMerchant, setShowMerchant] = useState(false);
+  const [showArchitect, setShowArchitect] = useState(false);
+  const [showFloors, setShowFloors] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [showDiary, setShowDiary] = useState(false);
   const [showKarmaView, setShowKarmaView] = useState(false);
-  const [showFloors, setShowFloors] = useState(false);
+  const [showEnding, setShowEnding] = useState(false);
+  const [selectedLog, setSelectedLog] = useState(null);
+
+  // Events & FX
+  const [isGlitchActive, setIsGlitchActive] = useState(false);
+  const [bossData, setBossData] = useState(null);
+  const [activeEvent, setActiveEvent] = useState(null);
+  const [incomingCall, setIncomingCall] = useState(false); // NEW STATE FOR CALL
+  const [activeRiddle, setActiveRiddle] = useState(null);
+  const [shake, setShake] = useState(false);
+  const [dmgVignette, setDmgVignette] = useState(false);
+  const [zoneNotification, setZoneNotification] = useState(null);
+  const [karmaFlash, setKarmaFlash] = useState(null);
+  const [floaters, setFloaters] = useState([]);
 
   const [selectedRelicInfo, setSelectedRelicInfo] = useState(null);
   const [sosLoading, setSosLoading] = useState(false);
   const [trialResult, setTrialResult] = useState(null);
   const [fxFlash, setFxFlash] = useState(null);
+  const [chatLog, setChatLog] = useState([{ user: "Sys", text: "Online." }]);
 
   const scrollRef = useRef(null);
+  const chatEndRef = useRef(null);
+
   const { displayed, done } = useTypewriter(
     currentText,
     phase === "ascending" ? 80 : 35
   );
 
   const getZone = (f) => {
-    if (f <= 10) return { img: "CABIN" };
-    if (f <= 20) return { img: "LAB" };
-    if (f <= 30) return { img: "LOFT" };
-    if (f <= 40) return { img: "GARDEN" };
-    return { img: "OFFICE" };
+    if (f <= 10) return { img: "CABIN", name: "ТЕХ. ЭТАЖИ" };
+    if (f <= 20) return { img: "LAB", name: "ЛАБОРАТОРИЯ" };
+    if (f <= 30) return { img: "LOFT", name: "ЖИЛОЙ ОТСЕК" };
+    if (f <= 40) return { img: "GARDEN", name: "СИНТЕТИЧЕСКИЙ САД" };
+    return { img: "OFFICE", name: "АДМИНИСТРАЦИЯ" };
   };
 
-  // --- STATS ---
+  // STATS
   let maxEnergyMult = 1;
   let costReduction = 0;
   let maxRiskPerCycle = 2;
+  let ghostChance = 0.1;
+  if (role === "ELITE") maxEnergyMult += 0.2;
+  if (role === "LEADER") maxRiskPerCycle += 1;
+  if (upgrades.maxEnergy) maxEnergyMult += 0.2 * upgrades.maxEnergy;
+  if (upgrades.costReduc) costReduction += 2 * upgrades.costReduc;
+  if (upgrades.ghostResist)
+    ghostChance = Math.max(0.01, ghostChance - 0.03 * upgrades.ghostResist);
   relics.forEach((rid) => {
     const r = RELICS_DB.find((x) => x.id === rid);
     if (r?.bonus?.maxEnergy) maxEnergyMult *= r.bonus.maxEnergy;
     if (r?.bonus?.costReduc) costReduction += r.bonus.costReduc;
     if (r?.bonus?.extraRisk) maxRiskPerCycle += r.bonus.extraRisk;
   });
-
   const max = Math.floor(
     (floor <= 10 ? 100 : floor <= 30 ? 140 : 220) * maxEnergyMult
   );
   const cost = Math.max(
-    10,
+    5,
     (floor <= 10 ? 30 : floor <= 30 ? 45 : 65) - costReduction
   );
-  const canAscend = energy >= cost && phase !== "emergency";
+  const canAscend =
+    energy >= cost &&
+    phase !== "emergency" &&
+    !isGlitchActive &&
+    !bossData &&
+    !activeEvent &&
+    !activeRiddle &&
+    !incomingCall;
   const canRisk = energy >= 20 && riskUsedThisCycle < maxRiskPerCycle;
 
-  // --- ACTIONS ---
-  const triggerFlash = (type) => {
-    setFxFlash(type);
-    setTimeout(() => setFxFlash(null), 300);
+  // HELPERS
+  const toggleMute = () => {
+    isMuted = !isMuted;
+    setMuted(isMuted);
+    playSound("click");
+  };
+  const modifyKarma = (amount) => {
+    setKarma((k) => k + amount);
+    setKarmaFlash(amount > 0 ? "pos" : "neg");
+    setTimeout(() => setKarmaFlash(null), 1500);
+    spawnFloater(
+      amount > 0 ? "+KARMA" : "-KARMA",
+      amount > 0 ? "#0f0" : "#f00"
+    );
+  };
+  const spawnFloater = (text, color) => {
+    const id = Date.now();
+    setFloaters((p) => [...p, { id, text, color, x: "50%", y: "40%" }]);
+    setTimeout(() => setFloaters((p) => p.filter((f) => f.id !== id)), 1000);
   };
 
-  const useKey = (keyId) => {
-    setInventory((prev) => {
-      const idx = prev.indexOf(keyId);
-      if (idx > -1) {
-        const n = [...prev];
-        n.splice(idx, 1);
-        return n;
+  const resetGame = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
+  const debugJump = () => {
+    const f = prompt("Прыжок на этаж (1-50):");
+    const num = Number(f);
+    if (num >= 1 && num <= 50) {
+      // Reset events so the new floor triggers correctly
+      setBossData(null);
+      setIsGlitchActive(false);
+      setActiveRiddle(null);
+      setIncomingCall(false);
+      setShowMerchant(false);
+      setFloor(num);
+      setPhase("floor");
+    }
+  };
+
+  const checkContracts = (type, val) => {
+    let completed = false;
+    const newContracts = contracts.filter((c) => {
+      if (c.type === type) {
+        const passed =
+          (type === "floor" && val >= c.target) ||
+          (type === "influence" && val >= c.target) ||
+          type === "item" ||
+          type === "boss" ||
+          type === "glitch";
+        if (passed) {
+          setInfluence((i) => i + c.reward);
+          spawnFloater(`+${c.reward} ВЛ`, "#ffd700");
+          setTrialResult(`КОНТРАКТ: +${c.reward} ВЛ`);
+          playSound("quest");
+          triggerFlash("green");
+          completed = true;
+          return false;
+        }
       }
-      return prev;
+      return true;
     });
-    setTrialResult(`ИСПОЛЬЗОВАНО: ${KEYS[keyId]?.name || keyId}`);
+    if (completed) {
+      const fresh =
+        CONTRACTS_DB[Math.floor(Math.random() * CONTRACTS_DB.length)];
+      setContracts([...newContracts, { ...fresh, id: Date.now() }]);
+    }
+  };
+
+  // ACTIONS
+  const answerCall = () => {
+    playSound("click");
+    setIncomingCall(false);
+    setActiveRiddle(RIDDLES[floor]); // Open the riddle for the CURRENT floor
+  };
+
+  const handleRiddleAnswer = (isCorrect) => {
+    playSound("click");
+    if (isCorrect) {
+      playSound("success");
+      triggerFlash("green");
+      spawnFloater("+30 EN", "#0f0");
+      setEnergy((e) => Math.min(e + 30, max));
+      setInfluence((i) => i + 2);
+      setTrialResult(activeRiddle.win);
+    } else {
+      triggerDamageFX();
+      spawnFloater("-20 EN", "red");
+      setEnergy((e) => Math.max(0, e - 20));
+      setTrialResult(activeRiddle.fail);
+    }
+    setActiveRiddle(null);
+  };
+
+  const useItem = (itemId) => {
+    const itemDef = ITEMS[itemId];
+    if (!itemDef) return;
+    checkContracts("item", 1);
+    if (itemDef.type === "combat") {
+      if (!bossData) {
+        setTrialResult("НУЖНА ЦЕЛЬ (БОЙ).");
+        return;
+      }
+      itemDef.effect({
+        damageEnemy: (amt) => {
+          setBossData((p) => ({
+            ...p,
+            hp: p.hp - amt,
+            log: [...p.log.slice(-2), `ГРАНАТА! (-${amt})`],
+          }));
+          playSound("boom");
+          triggerFlash("green");
+          triggerShake();
+          spawnFloater(`-${amt}`, "red");
+          if (bossData.hp - amt <= 0) {
+            setBossData(null);
+            if (bossData.name === "СИСТЕМА БЕЗОПАСНОСТИ") {
+              setInventory((p) => [...p, "architect"]);
+              setInfluence((i) => i + 10);
+              checkContracts("boss", 1);
+              spawnFloater("+10 ВЛ", "#ffd700");
+            } else {
+              setInfluence((i) => i + 2);
+              spawnFloater("+2 ВЛ", "#ffd700");
+            }
+            setTrialResult("ВРАГ УНИЧТОЖЕН.");
+          }
+        },
+      });
+    } else {
+      playSound("success");
+      itemDef.effect({
+        addEnergy: (amt) => {
+          setEnergy((e) => Math.min(e + amt, max));
+          spawnFloater(`+${amt} EN`, "#0f0");
+        },
+        resetRisk: () => {
+          setRiskUsedThisCycle(0);
+          spawnFloater("СБРОС", "#fff");
+        },
+        openArchitect: () => {
+          setShowArchitect(true);
+          return;
+        },
+      });
+      if (itemId === "architect") {
+        setShowBag(false);
+        setShowArchitect(true);
+        return;
+      }
+      if (itemId === "silence" || itemId === "mirror") return;
+    }
+    if (itemDef.type !== "key") {
+      setInventory((prev) => {
+        const idx = prev.indexOf(itemId);
+        if (idx > -1) {
+          const n = [...prev];
+          n.splice(idx, 1);
+          return n;
+        }
+        return prev;
+      });
+    }
     setShowBag(false);
+  };
+
+  const buyItem = (id, cost) => {
+    if (influence >= cost) {
+      playSound("buy");
+      setInfluence((i) => i - cost);
+      setInventory((p) => [...p, id]);
+      triggerFlash("green");
+      spawnFloater("-ВЛ", "#ffd700");
+    } else {
+      playSound("error");
+      triggerFlash("red");
+    }
   };
 
   const handleRisk = () => {
     if (!canRisk) return;
+    playSound("click");
     setEnergy((e) => Math.max(0, e - 20));
     setRiskUsedThisCycle((c) => c + 1);
     if (Math.random() > 0.5) {
+      playSound("success");
       setEnergy((e) => Math.min(e + 45, max));
-      setTrialResult("УДАЧА! +45");
+      setInfluence((i) => i + 1);
+      spawnFloater("+45 EN", "#0f0");
+      setTrialResult("УСПЕХ! +45 ЭН");
       triggerFlash("green");
     } else {
+      playSound("error");
       setTrialResult("ПУСТОТА...");
       triggerFlash("red");
+      triggerDamageFX();
+      spawnFloater("ПУСТО", "#666");
+    }
+  };
+
+  const handleReboot = () => {
+    playSound("click");
+    setIsGlitchActive(false);
+    setEnergy((e) => Math.min(e + 20, max));
+    setTrialResult("СИСТЕМА ВОССТАНОВЛЕНА.");
+    triggerFlash("green");
+    checkContracts("glitch", 1);
+  };
+
+  const combatAction = (type) => {
+    if (!bossData) return;
+    playSound("click");
+    let dmg = 0;
+    let cost = 0;
+    let logMsg = "";
+    if (type === "attack") {
+      cost = 10;
+      dmg = role === "LEADER" ? 25 : 15;
+      logMsg = "УДАР";
+    } else if (type === "hack") {
+      cost = 15;
+      dmg = role === "ELITE" ? 35 : Math.random() > 0.3 ? 30 : 0;
+      logMsg = dmg > 0 ? "ВЗЛОМ" : "СБОЙ";
+    }
+
+    if (energy < cost) {
+      setBossData((p) => ({
+        ...p,
+        log: [...p.log.slice(-2), "НЕДОСТАТОЧНО ЭНЕРГИИ!"],
+      }));
+      return;
+    }
+    setEnergy((e) => e - cost);
+
+    const newHp = bossData.hp - dmg;
+    spawnFloater(`-${dmg}`, "orange");
+
+    if (newHp <= 0) {
+      playSound("success");
+      setBossData(null);
+      if (bossData.name === "СИСТЕМА БЕЗОПАСНОСТИ") {
+        setInventory((p) => [...p, "architect"]);
+        setInfluence((i) => i + 10);
+        checkContracts("boss", 1);
+        spawnFloater("+10 ВЛ", "#ffd700");
+      } else {
+        setInfluence((i) => i + 2);
+        spawnFloater("+2 ВЛ", "#ffd700");
+      }
+      setTrialResult("ПОБЕДА.");
+      triggerFlash("green");
+    } else {
+      const enemyDmg = bossData.damage;
+      setEnergy((e) => Math.max(0, e - enemyDmg));
+      triggerDamageFX();
+      triggerFlash("red");
+      setBossData((p) => ({
+        ...p,
+        hp: newHp,
+        log: [...p.log.slice(-2), `${logMsg} (-${dmg})`, `УРОН (-${enemyDmg})`],
+      }));
     }
   };
 
   const ascend = () => {
     if (!canAscend) return;
+    playSound("click");
+
+    const nextFloor = floor + 1;
+    checkContracts("floor", nextFloor);
+    if (getZone(floor).name !== getZone(nextFloor).name) {
+      setZoneNotification(getZone(nextFloor).name);
+      setTimeout(() => setZoneNotification(null), 3000);
+    }
+
+    // Just advance the floor. The useEffect will handle Events.
     setPhase("ascending");
     setEnergy((e) => e - cost);
     setTrialResult(null);
     setRiskUsedThisCycle(0);
+
+    // Minor random events
+    const rand = Math.random();
+    if (
+      rand < 0.15 &&
+      floor > 5 &&
+      !activeEvent &&
+      !activeRiddle &&
+      !incomingCall &&
+      !bossData
+    ) {
+      setTimeout(
+        () =>
+          setActiveEvent(
+            RANDOM_EVENTS[Math.floor(Math.random() * RANDOM_EVENTS.length)]
+          ),
+        1000
+      );
+    } else if (rand < ghostChance && floor > 3 && !bossData && !incomingCall) {
+      setTimeout(() => {
+        playSound("alarm");
+        setIsGlitchActive(true);
+      }, 1500);
+    }
+
+    if (floor % 5 === 0) {
+      setInfluence((i) => i + 2);
+      checkContracts("influence", influence + 2);
+      spawnFloater("+2 ВЛ", "#ffd700");
+    }
     setTimeout(() => {
       setFloor((f) => Math.min(f + 1, 50));
       setPhase("floor");
     }, 2000);
   };
 
+  const spawnEnemy = (type) => {
+    playSound("alarm");
+    const difficultyMult = 1 + cycle * 0.5;
+    const eData = ENEMIES[type] || ENEMIES.BOSS;
+    setBossData({
+      ...eData,
+      hp: eData.hp * difficultyMult,
+      maxHp: eData.maxHp * difficultyMult,
+      damage: Math.floor(eData.damage * difficultyMult),
+      log: ["ЦЕЛЬ ЗАХВАЧЕНА."],
+    });
+    setPhase("floor");
+  };
   const handleDescent = () => {
     setFloor((f) => Math.max(1, f - 5));
     setEnergy(30);
     setPhase("floor");
     setTrialResult("АВАРИЙНЫЙ СПУСК.");
+    playSound("error");
+    triggerDamageFX();
   };
   const handleSOS = () => {
     setSosLoading(true);
+    playSound("click");
     setTimeout(() => {
       setFloor((f) => Math.max(1, f - 5));
       setEnergy(100);
@@ -293,36 +965,194 @@ export default function ErnieGame() {
       setSosLoading(false);
     }, 2000);
   };
-
-  // --- DEBUG TOOLS ---
   const debugAddAllRelics = () => setRelics(RELICS_DB.map((r) => r.id));
-  const debugAddKey = () => setInventory((p) => [...p, "mirror"]);
+  const debugAddKey = () =>
+    setInventory((p) => [...p, "architect", "emp", "battery"]);
+  const debugGhost = () => {
+    playSound("alarm");
+    setIsGlitchActive(true);
+  };
+  const debugBoss = () => spawnEnemy("BOSS");
+  const debugInfl = () => setInfluence((i) => i + 5);
+  const triggerGhost = () => {
+    playSound("alarm");
+    setIsGlitchActive(true);
+  };
+  const handleEventChoice = (action) => {
+    playSound("click");
+    if (action === "loot_corpse") {
+      modifyKarma(-10);
+      setInventory((p) => [...p, "mirror"]);
+      setTrialResult("Найдено: Ключ Зеркала");
+    }
+    if (action === "bury_corpse") {
+      modifyKarma(10);
+      setTrialResult("Душа успокоена.");
+    }
+    if (action === "buy_drink") {
+      if (influence >= 3) {
+        setInfluence((i) => i - 3);
+        setEnergy((e) => Math.min(e + 30, max));
+        setTrialResult("Вкусно.");
+      } else {
+        setTrialResult("Нет денег.");
+      }
+    }
+    if (action === "leave") {
+      setTrialResult("Ты прошел мимо.");
+    }
+    setActiveEvent(null);
+  };
+  const triggerAscension = () => {
+    playSound("success");
+    setFloor(1);
+    setEnergy(100);
+    setInventory(["silence"]);
+    setCycle((c) => c + 1);
+    setShowEnding(false);
+    setPhase("floor");
+    setTrialResult(`ЦИКЛ ${cycle + 2} НАЧАЛСЯ.`);
+  };
+  const selectRole = (rId) => {
+    playSound("click");
+    setRole(rId.toUpperCase());
+    setPhase("floor");
+  };
+  const triggerFlash = (type) => {
+    setFxFlash(type);
+    setTimeout(() => setFxFlash(null), 300);
+  };
+  const triggerDamageFX = () => {
+    setDmgVignette(true);
+    setTimeout(() => setDmgVignette(false), 400);
+    triggerShake();
+  };
+  const triggerShake = () => {
+    setShake(true);
+    setTimeout(() => setShake(false), 300);
+    playSound("error");
+  };
+  const buyUpgrade = (upg) => {
+    if (influence >= upg.cost) {
+      playSound("buy");
+      setInfluence((i) => i - upg.cost);
+      setUpgrades((p) => ({ ...p, [upg.code]: (p[upg.code] || 0) + 1 }));
+      triggerFlash("green");
+      spawnFloater("-ВЛ", "#ffd700");
+    } else {
+      playSound("error");
+      triggerFlash("red");
+    }
+  };
+  const retreatFromBoss = () => {
+    setBossData(null);
+    handleDescent();
+  };
+  const chatAction = (action) => {
+    if (action === "requestEnergy" && influence >= 3) {
+      playSound("success");
+      setInfluence((i) => i - 3);
+      setEnergy((e) => Math.min(e + 25, max));
+      setChatLog((p) => [...p, { user: "Bot", text: "+25 ЭН" }]);
+      spawnFloater("+25 EN", "#0f0");
+    }
+  };
 
-  // --- EFFECTS ---
+  // 🔥 IMPORTANT: CENTRALIZED EVENT CHECKER
   useEffect(() => {
-    if (energy <= 0 && phase !== "emergency") {
+    // 1. ENDING
+    if (floor === 50) {
+      setShowEnding(true);
+      return;
+    }
+
+    // 2. BOSS (10, 20, 30...)
+    if (floor % 10 === 0 && floor > 1 && !bossData) {
+      setTimeout(() => {
+        playSound("alarm");
+        const difficultyMult = 1 + cycle * 0.5;
+        setBossData({
+          ...ENEMIES.BOSS,
+          hp: 100 * difficultyMult,
+          maxHp: 100 * difficultyMult,
+          damage: Math.floor(10 * difficultyMult),
+          log: ["ОБНАРУЖЕНА УГРОЗА."],
+        });
+      }, 1000);
+      return;
+    }
+
+    // 3. MERCHANT (9, 19, 29...)
+    if ((floor + 1) % 10 === 0 && floor > 1) {
+      setTimeout(() => setShowMerchant(true), 500);
+    }
+
+    // 4. RIDDLES (5, 15, 25...) - NEW: Trigger "Incoming Call" first
+    if (
+      (floor === 5 ||
+        floor === 15 ||
+        floor === 25 ||
+        floor === 35 ||
+        floor === 45) &&
+      RIDDLES[floor] &&
+      !activeRiddle &&
+      !incomingCall
+    ) {
+      setTimeout(() => {
+        playSound("phone");
+        setIncomingCall(true);
+      }, 500);
+    }
+  }, [floor]); // Runs every time floor changes
+
+  // EFFECTS
+  useEffect(() => {
+    if (
+      energy <= 0 &&
+      phase !== "emergency" &&
+      role &&
+      !bossData &&
+      !activeEvent &&
+      !activeRiddle &&
+      !incomingCall
+    ) {
       setPhase("emergency");
       triggerFlash("red");
     }
-  }, [energy, phase]);
-
+  }, [energy, phase, role, bossData, activeEvent, activeRiddle, incomingCall]);
   useEffect(() => {
-    localStorage.setItem("ernie_floor", floor);
-    localStorage.setItem("ernie_energy", energy);
-    localStorage.setItem("ernie_relics", JSON.stringify(relics));
-    localStorage.setItem("ernie_inventory", JSON.stringify(inventory));
-    localStorage.setItem("ernie_risk_cycle", riskUsedThisCycle);
-  }, [floor, energy, relics, inventory, riskUsedThisCycle]);
-
+    if (role) {
+      localStorage.setItem("ernie_floor", floor);
+      localStorage.setItem("ernie_contracts", JSON.stringify(contracts));
+      localStorage.setItem("ernie_energy", energy);
+      localStorage.setItem("ernie_relics", JSON.stringify(relics));
+      localStorage.setItem("ernie_inventory", JSON.stringify(inventory));
+      localStorage.setItem("ernie_risk_cycle", riskUsedThisCycle);
+      localStorage.setItem("ernie_role", role);
+      localStorage.setItem("ernie_influence", influence);
+      localStorage.setItem("ernie_upgrades", JSON.stringify(upgrades));
+      localStorage.setItem("ernie_cycle", cycle);
+    }
+  }, [
+    floor,
+    energy,
+    relics,
+    inventory,
+    riskUsedThisCycle,
+    role,
+    influence,
+    upgrades,
+    cycle,
+    contracts,
+  ]);
   useEffect(() => {
-    let txt =
-      phase === "emergency"
-        ? "СБОЙ СИСТЕМЫ. ЭНЕРГИЯ 0."
-        : trialResult ||
-          (floor === 1 ? "Этаж 0. Лифт ждет." : "Ты слышишь гул механизмов.");
+    let txt = "";
+    if (bossData) txt = bossData.text;
+    else if (isGlitchActive) txt = "⚠ ОШИБКА ⚠";
+    else if (phase === "emergency") txt = "СБОЙ СИСТЕМЫ.";
+    else txt = trialResult || (floor === 1 ? "Этаж 0." : "Системы в норме.");
     setCurrentText(txt);
-  }, [floor, trialResult, phase]);
-
+  }, [floor, trialResult, phase, isGlitchActive, bossData]);
   useEffect(() => {
     if (showFloors && scrollRef.current)
       scrollRef.current.scrollTo({
@@ -331,16 +1161,88 @@ export default function ErnieGame() {
       });
   }, [showFloors, floor]);
 
+  if (!role) {
+    return (
+      <div
+        style={{
+          ...S.gameContainer,
+          background: "#000",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 20,
+        }}
+      >
+        <div
+          style={{
+            color: "#E94560",
+            fontSize: 24,
+            fontWeight: "bold",
+            marginBottom: 40,
+          }}
+        >
+          ВЫБЕРИ РОЛЬ
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 15,
+            width: "100%",
+          }}
+        >
+          {Object.values(ROLES).map((r) => (
+            <button
+              key={r.id}
+              onClick={() => selectRole(r.id)}
+              style={S.roleCard}
+            >
+              <div style={{ color: "#fff", fontWeight: "bold" }}>{r.name}</div>
+              <div style={{ color: "#E0C068", fontSize: 10 }}>{r.bonus}</div>
+              <div style={{ color: "#888", fontSize: 10, marginTop: 5 }}>
+                {r.desc}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ ...S.gameContainer, background: "#000" }}>
+    <div
+      style={{
+        ...S.gameContainer,
+        background: "#000",
+        animation: shake ? "shake 0.3s" : "none",
+      }}
+    >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
         body { background: #000; font-family: 'JetBrains Mono', monospace; user-select: none; }
         .hide-scroll::-webkit-scrollbar { display: none; }
         @keyframes glow { 0%, 100% { box-shadow: inset 0 0 5px #ffd700; } 50% { box-shadow: inset 0 0 15px #ffd700; } }
+        @keyframes glitchSlow { 0% { opacity: 0.95; } 50% { opacity: 1; } 100% { opacity: 0.95; } }
+        @keyframes shake { 0% { transform: translate(1px, 1px) rotate(0deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }
+        @keyframes floatUp { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
+        @keyframes fadeOutUp { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-20px); } }
+        @keyframes fall { 0% { transform: translateY(-10px) translateX(0); opacity: 0; } 50% { opacity: 0.5; } 100% { transform: translateY(100vh) translateX(20px); opacity: 0; } }
+        @keyframes slideBg { from { background-position: center 0px; } to { background-position: center 50px; } }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .crt::before { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 9999; background-size: 100% 2px, 3px 100%; pointer-events: none; }
       `}</style>
 
-      {/* BACKGROUND */}
+      <div
+        className="crt"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 9999,
+          pointerEvents: "none",
+        }}
+      />
+      <ParticleSystem />
       <div
         style={{
           position: "absolute",
@@ -348,10 +1250,25 @@ export default function ErnieGame() {
           backgroundImage: `url(${IMG[getZone(floor).img]})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
-          filter: "brightness(0.4)",
+          filter: `brightness(${Math.max(0.1, 0.5 - floor / 100)})`,
           zIndex: 1,
+          animation: phase === "ascending" ? "slideBg 2s ease-in-out" : "none",
         }}
       />
+
+      {/* DAMAGE VIGNETTE */}
+      {dmgVignette && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            boxShadow: "inset 0 0 50px red",
+            zIndex: 998,
+            pointerEvents: "none",
+          }}
+        />
+      )}
+
       <div
         style={{
           position: "absolute",
@@ -367,48 +1284,96 @@ export default function ErnieGame() {
         }}
       />
 
-      {/* HUD */}
+      {/* FLOATING TEXT RENDERER */}
+      {floaters.map((f) => (
+        <Floater key={f.id} {...f} />
+      ))}
+
+      {/* CONTRACTS WIDGET - MOVED DOWN */}
       <div
         style={{
           position: "absolute",
-          top: 20,
+          top: 70,
           left: 20,
-          right: 20,
           zIndex: 40,
-          display: "flex",
-          justifyContent: "space-between",
+          width: 120,
         }}
       >
-        <EnergyPulse energy={energy} max={max} karma={karma} />
-        <div onClick={() => setShowFloors(true)} style={S.floorText}>
-          {floor}
-          <div style={{ fontSize: 9, letterSpacing: 2 }}>ЭТАЖ</div>
+        <div style={{ fontSize: 8, color: "#666", marginBottom: 5 }}>
+          ЗАДАНИЯ:
         </div>
+        {contracts.map((c) => (
+          <div
+            key={c.id}
+            style={{
+              fontSize: 9,
+              color: "#ccc",
+              marginBottom: 3,
+              borderLeft: "2px solid #E0C068",
+              paddingLeft: 5,
+            }}
+          >
+            • {c.text}
+          </div>
+        ))}
       </div>
 
-      {/* EMERGENCY */}
-      {phase === "emergency" && (
-        <div style={S.overlay}>
-          <div style={S.box}>
-            <div style={{ color: "red", marginBottom: 15 }}>
-              КРИТИЧЕСКИЙ СБОЙ
+      {!isGlitchActive &&
+        !bossData &&
+        !activeEvent &&
+        !activeRiddle &&
+        !incomingCall && (
+          <div
+            style={{
+              position: "absolute",
+              top: 20,
+              left: 20,
+              right: 20,
+              zIndex: 40,
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <EnergyPulse
+                energy={energy}
+                max={max}
+                influence={influence}
+                cycle={cycle}
+              />
+              <div style={{ fontSize: 9, color: "#666", marginTop: 4 }}>
+                РОЛЬ: {role}
+              </div>
             </div>
-            <button onClick={handleDescent} style={S.mainBtn}>
-              СПУСК (-5 эт, +30 эн)
-            </button>
-            <button
-              onClick={handleSOS}
-              style={{ ...S.mainBtn, marginTop: 10, background: "#00aa44" }}
-            >
-              {sosLoading ? "..." : "SOS (+100 эн)"}
-            </button>
+            {/* CLEAN MAP BUTTON */}
+            <div onClick={() => setShowFloors(true)} style={S.floorText}>
+              <span style={{ fontSize: 20 }}>🗺️</span>
+              <div style={{ fontSize: 9, letterSpacing: 2 }}>КАРТА</div>
+            </div>
+          </div>
+        )}
+
+      {zoneNotification && (
+        <div style={S.zonePopup}>
+          <div style={{ color: "#E0C068", fontSize: 10, letterSpacing: 2 }}>
+            ВХОД В СЕКТОР
+          </div>
+          <div style={{ color: "#fff", fontSize: 24, fontWeight: "bold" }}>
+            {zoneNotification}
           </div>
         </div>
       )}
 
-      {/* MODAL: СУМКА (СТАРЫЙ ДИЗАЙН) */}
+      {/* MODALS */}
+      {/* BAG - HIGH Z-INDEX (3000) FIX */}
       {showBag && (
-        <div style={S.overlay} onClick={() => setShowBag(false)}>
+        <div
+          style={S.highOverlay}
+          onClick={() => {
+            setShowBag(false);
+            playSound("click");
+          }}
+        >
           <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
             <div
               style={{ marginBottom: 20, color: "#E94560", letterSpacing: 2 }}
@@ -419,66 +1384,26 @@ export default function ErnieGame() {
               <div style={{ color: "#666" }}>Пусто...</div>
             )}
             {inventory.map((k, i) => {
-              const kData = KEYS[k] || { name: k, desc: "Предмет" };
+              const kData = ITEMS[k] || { name: k, desc: "Предмет" };
               return (
-                <button key={i} onClick={() => useKey(k)} style={S.keyItemBtn}>
+                <button key={i} onClick={() => useItem(k)} style={S.keyItemBtn}>
                   <div>
-                    {kData.icon} {kData.name}
+                    {kData.type === "combat"
+                      ? "💣"
+                      : kData.type === "key"
+                      ? "🔑"
+                      : "💊"}{" "}
+                    {kData.name}
                   </div>
                   <div style={{ fontSize: 9, color: "#888" }}>{kData.desc}</div>
                 </button>
               );
             })}
-            <button onClick={() => setShowBag(false)} style={S.closeBagBtn}>
-              ЗАКРЫТЬ
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ДНЕВНИК (СТАРЫЙ ДИЗАЙН С ЗАМКАМИ) */}
-      {showDiary && (
-        <div style={S.overlay} onClick={() => setShowDiary(false)}>
-          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
-            <div style={{ marginBottom: 20, color: "#E0C068" }}>📖 ДНЕВНИК</div>
-            <div style={S.diaryGrid}>
-              {[5, 10, 15, 20, 25, 30].map((f) => (
-                <div key={f} style={S.diaryCard}>
-                  <div style={{ fontSize: 24 }}>{floor >= f ? "🔓" : "🔒"}</div>
-                  <div style={{ fontSize: 10, color: "#666" }}>???</div>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => setShowDiary(false)} style={S.closeBagBtn}>
-              ЗАКРЫТЬ
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: КАРМА (СТАРЫЙ КРУГЛЫЙ ДИЗАЙН) */}
-      {showKarmaView && (
-        <div style={S.overlay} onClick={() => setShowKarmaView(false)}>
-          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
-            <div style={{ marginBottom: 20, color: "#E0C068" }}>ТВОЙ ПУТЬ</div>
-            <div style={S.karmaCircle}>
-              <div
-                style={{
-                  ...S.karmaNeedle,
-                  transform: `translate(-50%, -100%) rotate(${karma * 1.8}deg)`,
-                }}
-              />
-            </div>
-            <div
-              style={{
-                marginTop: 15,
-                color: karma > 0 ? "#4a8a4a" : karma < 0 ? "#8a3a6a" : "#ccc",
-              }}
-            >
-              {karma > 0 ? "СВЕТ" : karma < 0 ? "ТЬМА" : "РАВНОВЕСИЕ"}
-            </div>
             <button
-              onClick={() => setShowKarmaView(false)}
+              onClick={() => {
+                setShowBag(false);
+                playSound("click");
+              }}
               style={S.closeBagBtn}
             >
               ЗАКРЫТЬ
@@ -487,9 +1412,392 @@ export default function ErnieGame() {
         </div>
       )}
 
-      {/* MODAL: РЕЛИКВИИ (НОВЫЙ КРАСИВЫЙ ДИЗАЙН) */}
+      {/* INCOMING CALL SCREEN (NEW) */}
+      {incomingCall && (
+        <div style={S.bossOverlay}>
+          <div
+            style={{
+              ...S.bossWindow,
+              borderColor: "#ffb000",
+              background: "#110f00",
+            }}
+          >
+            <div
+              style={{
+                ...S.bossHeader,
+                color: "#ffb000",
+                animation: "blink 1s infinite",
+              }}
+            >
+              📞 ВХОДЯЩЕЕ СОЕДИНЕНИЕ...
+            </div>
+            <div
+              style={{
+                padding: 20,
+                textAlign: "center",
+                color: "#cc8800",
+                fontFamily: "monospace",
+                fontSize: 12,
+              }}
+            >
+              ИСТОЧНИК: <br />
+              <span style={{ fontSize: 18, fontWeight: "bold" }}>
+                ERNIE_CORE_SYS
+              </span>
+            </div>
+            <button
+              onClick={answerCall}
+              style={{
+                ...S.bossBtn,
+                borderColor: "#ffb000",
+                color: "#ffb000",
+                marginTop: 20,
+              }}
+            >
+              [ ОТВЕТИТЬ ]
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* RIDDLE MODAL (NEW RETRO AMBER THEME) */}
+      {activeRiddle && (
+        <div style={S.bossOverlay}>
+          <div
+            style={{
+              ...S.bossWindow,
+              borderColor: "#ffb000",
+              background: "#110f00",
+            }}
+          >
+            <div style={{ ...S.bossHeader, color: "#ffb000" }}>
+              ПРОТОКОЛ ЭРНИ
+            </div>
+            <div
+              style={{
+                padding: 20,
+                textAlign: "center",
+                color: "#ffb000",
+                fontFamily: "monospace",
+                fontSize: 12,
+              }}
+            >
+              {activeRiddle.q}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                padding: 10,
+              }}
+            >
+              {activeRiddle.opts.map((opt, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleRiddleAnswer(opt.correct)}
+                  style={{
+                    ...S.bossBtn,
+                    borderColor: "#664400",
+                    color: "#ffb000",
+                  }}
+                >
+                  {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMerchant && (
+        <div style={S.bossOverlay}>
+          <div style={S.bossWindow}>
+            <div style={{ ...S.bossHeader, color: "#00FF00" }}>
+              ТОРГОВЫЙ ТЕРМИНАЛ
+            </div>
+            <div
+              style={{
+                padding: 10,
+                textAlign: "center",
+                color: "#ccc",
+                fontSize: 10,
+                marginBottom: 10,
+              }}
+            >
+              БАЛАНС: {influence} ВЛ
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+              }}
+            >
+              <button onClick={() => buyItem("battery", 4)} style={S.shopItem}>
+                <div>🔋 БАТАРЕЯ</div>
+                <div style={{ color: "#888", fontSize: 8 }}>+40 ЭН</div>
+                <div>4 ВЛ</div>
+              </button>
+              <button onClick={() => buyItem("emp", 6)} style={S.shopItem}>
+                <div>💣 ЭМИ</div>
+                <div style={{ color: "#888", fontSize: 8 }}>50 УРОН</div>
+                <div>6 ВЛ</div>
+              </button>
+              <button onClick={() => buyItem("stim", 5)} style={S.shopItem}>
+                <div>💉 СТИМ</div>
+                <div style={{ color: "#888", fontSize: 8 }}>СБРОС РИСКА</div>
+                <div>5 ВЛ</div>
+              </button>
+            </div>
+            <button
+              onClick={() => setShowMerchant(false)}
+              style={S.closeBagBtn}
+            >
+              УЙТИ
+            </button>
+          </div>
+        </div>
+      )}
+      {activeEvent && (
+        <div style={S.bossOverlay}>
+          <div style={S.bossWindow}>
+            <div style={{ ...S.bossHeader, color: "#E0C068" }}>
+              {activeEvent.title}
+            </div>
+            <div style={{ padding: 20, textAlign: "center", color: "#ccc" }}>
+              {activeEvent.text}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                padding: 10,
+              }}
+            >
+              {activeEvent.choices.map((c, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleEventChoice(c.action)}
+                  style={S.bossBtn}
+                >
+                  {c.text}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {bossData && (
+        <div style={S.bossOverlay}>
+          <div style={S.bossWindow}>
+            <div style={S.bossHeader}>⚠️ {bossData.name}</div>
+            <div style={S.bossBody}>
+              <img
+                src={IMG.BOSS_BG}
+                style={{
+                  width: "100%",
+                  height: 100,
+                  objectFit: "cover",
+                  opacity: 0.7,
+                  border: "1px solid #333",
+                }}
+                alt=""
+              />
+              <div style={{ marginTop: 10, marginBottom: 5, color: "#fff" }}>
+                СТРУКТУРА: {bossData.hp} / {bossData.maxHp}
+              </div>
+              <div style={{ width: "100%", height: 6, background: "#333" }}>
+                <div
+                  style={{
+                    width: `${(bossData.hp / bossData.maxHp) * 100}%`,
+                    height: "100%",
+                    background: "red",
+                  }}
+                />
+              </div>
+              <div style={S.battleLog}>
+                {bossData.log.map((l, i) => (
+                  <div key={i}>{l}</div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 15 }}>
+                <button
+                  onClick={() => combatAction("attack")}
+                  disabled={energy < 10}
+                  style={{ ...S.bossBtn, opacity: energy < 10 ? 0.5 : 1 }}
+                >
+                  АТАКА (10)
+                </button>
+                <button
+                  onClick={() => combatAction("hack")}
+                  disabled={energy < 15}
+                  style={{
+                    ...S.bossBtn,
+                    borderColor: "#00FFFF",
+                    color: "#00FFFF",
+                    opacity: energy < 15 ? 0.5 : 1,
+                  }}
+                >
+                  ВЗЛОМ (15)
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
+                <button
+                  onClick={() => setShowBag(true)}
+                  style={{
+                    ...S.bossBtn,
+                    borderColor: "#E0C068",
+                    color: "#E0C068",
+                    fontSize: 10,
+                  }}
+                >
+                  🎒 ПРЕДМЕТ
+                </button>
+                <button
+                  onClick={() => {
+                    setBossData(null);
+                    handleDescent();
+                  }}
+                  style={{
+                    ...S.bossBtn,
+                    borderColor: "#666",
+                    color: "#888",
+                    fontSize: 10,
+                  }}
+                >
+                  СБЕЖАТЬ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {isGlitchActive && (
+        <div style={S.glitchOverlay}>
+          <div style={S.glitchWindow}>
+            <div style={S.glitchHeader}>⚠ SYSTEM FAILURE ⚠</div>
+            <div style={S.glitchBody}>
+              <img
+                src={IMG.GHOST_GIF}
+                style={{
+                  width: "100%",
+                  opacity: 0.4,
+                  marginBottom: 15,
+                  border: "1px solid #111",
+                  filter: "grayscale(100%) brightness(20%) contrast(150%)",
+                }}
+                alt="glitch"
+              />
+              <div
+                style={{
+                  color: "#551111",
+                  textShadow: "none",
+                  fontSize: 14,
+                  marginBottom: 10,
+                  fontWeight: "bold",
+                }}
+              >
+                ОНО ВИДИТ ТЕБЯ.
+              </div>
+              <button onClick={handleReboot} style={S.rebootBtn}>
+                [ ПЕРЕЗАГРУЗКА ]
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {phase === "emergency" &&
+        !isGlitchActive &&
+        !bossData &&
+        !activeEvent &&
+        !activeRiddle &&
+        !incomingCall && (
+          <div style={S.overlay}>
+            <div style={S.box}>
+              <div style={{ color: "red", marginBottom: 15 }}>
+                КРИТИЧЕСКИЙ СБОЙ
+              </div>
+              <button onClick={handleDescent} style={S.mainBtn}>
+                СПУСК (-5 эт, +30 эн)
+              </button>
+              <button
+                onClick={handleSOS}
+                style={{ ...S.mainBtn, marginTop: 10, background: "#00aa44" }}
+              >
+                {sosLoading ? "..." : "SOS (+100 эн)"}
+              </button>
+            </div>
+          </div>
+        )}
+
+      {/* MENUS */}
+      {showArchitect && (
+        <div
+          style={S.overlay}
+          onClick={() => {
+            setShowArchitect(false);
+            playSound("click");
+          }}
+        >
+          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
+            <div
+              style={{ marginBottom: 20, color: "#00FFFF", letterSpacing: 2 }}
+            >
+              СИСТЕМА ЛИФТА
+            </div>
+            <div style={{ marginBottom: 10, fontSize: 10, color: "#E0C068" }}>
+              ВЛИЯНИЕ: {influence}
+            </div>
+            {UPGRADES.map((u) => {
+              const afford = influence >= u.cost;
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => buyUpgrade(u)}
+                  disabled={!afford}
+                  style={{ ...S.keyItemBtn, opacity: afford ? 1 : 0.5 }}
+                >
+                  <div>
+                    <div style={{ color: "#fff", fontWeight: "bold" }}>
+                      {u.name}
+                    </div>
+                    <div style={{ fontSize: 9, color: "#888" }}>{u.effect}</div>
+                  </div>
+                  <div
+                    style={{
+                      color: afford ? "#E0C068" : "#444",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    {!afford && "🔒"} {u.cost} ВЛ
+                  </div>
+                </button>
+              );
+            })}
+            <button
+              onClick={() => {
+                setShowArchitect(false);
+                playSound("click");
+              }}
+              style={S.closeBagBtn}
+            >
+              ЗАКРЫТЬ
+            </button>
+          </div>
+        </div>
+      )}
       {showRelics && (
-        <div style={S.overlay} onClick={() => setShowRelics(false)}>
+        <div
+          style={S.overlay}
+          onClick={() => {
+            setShowRelics(false);
+            playSound("click");
+          }}
+        >
           <div style={S.relicsContainer} onClick={(e) => e.stopPropagation()}>
             <div style={S.relicsGrid}>
               {RELICS_DB.map((r) => {
@@ -525,18 +1833,92 @@ export default function ErnieGame() {
                   : "Предметы хранят память."}
               </div>
             </div>
-            <button onClick={() => setShowRelics(false)} style={S.closeBtn}>
+            <button
+              onClick={() => {
+                setShowRelics(false);
+                playSound("click");
+              }}
+              style={S.closeBtn}
+            >
               ЗАКРЫТЬ
             </button>
           </div>
         </div>
       )}
-
-      {/* MODAL: КАРТА (СТАРЫЙ СТАТИЧНЫЙ ФОН) */}
+      {showDiary && (
+        <div
+          style={S.overlay}
+          onClick={() => {
+            setShowDiary(false);
+            setSelectedLog(null);
+            playSound("click");
+          }}
+        >
+          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 20, color: "#E0C068" }}>📖 ДНЕВНИК</div>
+            {selectedLog ? (
+              <div>
+                <div
+                  style={{
+                    color: "#ccc",
+                    fontSize: 12,
+                    marginBottom: 20,
+                    lineHeight: 1.5,
+                    textAlign: "left",
+                  }}
+                >
+                  {selectedLog}
+                </div>
+                <button
+                  onClick={() => setSelectedLog(null)}
+                  style={S.closeBagBtn}
+                >
+                  НАЗАД
+                </button>
+              </div>
+            ) : (
+              <div style={S.diaryGrid}>
+                {[5, 10, 15, 20, 25, 30].map((f) => (
+                  <div
+                    key={f}
+                    onClick={() => floor >= f && setSelectedLog(DIARY_LOGS[f])}
+                    style={{
+                      ...S.diaryCard,
+                      opacity: floor >= f ? 1 : 0.3,
+                      cursor: floor >= f ? "pointer" : "default",
+                    }}
+                  >
+                    <div style={{ fontSize: 24 }}>
+                      {floor >= f ? "🔓" : "🔒"}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#666" }}>УР. {f}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!selectedLog && (
+              <button
+                onClick={() => {
+                  setShowDiary(false);
+                  playSound("click");
+                }}
+                style={S.closeBagBtn}
+              >
+                ЗАКРЫТЬ
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {showFloors && (
-        <div style={S.overlay} onClick={() => setShowFloors(false)}>
+        <div
+          style={S.overlay}
+          onClick={() => {
+            setShowFloors(false);
+            playSound("click");
+          }}
+        >
           <div style={S.mapWrapper}>
-            {/* Картинка одна на весь скролл, зафиксирована */}
             <div style={S.mapBg} />
             <div className="hide-scroll" ref={scrollRef} style={S.mapScroll}>
               {[...Array(50)].map((_, i) => {
@@ -560,88 +1942,175 @@ export default function ErnieGame() {
           </div>
         </div>
       )}
-
-      {/* BOTTOM UI (ВОЗВРАЩЕНЫ ВСЕ КНОПКИ) */}
-      <div style={S.bottomUI}>
-        <div style={S.terminal}>
-          <div style={{ color: "#E94560", fontSize: 8, fontWeight: "bold" }}>
-            ERNIE
-          </div>
-          <div style={{ color: "#ccc", fontSize: 12 }}>{displayed}</div>
-        </div>
-
-        {done && phase === "floor" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* DEBUG LINE */}
+      {showKarmaView && (
+        <div
+          style={S.overlay}
+          onClick={() => {
+            setShowKarmaView(false);
+            playSound("click");
+          }}
+        >
+          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 20, color: "#E0C068" }}>ТВОЙ ПУТЬ</div>
+            <div style={S.karmaCircle}>
+              <div
+                style={{
+                  ...S.karmaNeedle,
+                  transform: `translate(-50%, -100%) rotate(${karma * 1.8}deg)`,
+                }}
+              />
+            </div>
             <div
               style={{
-                display: "flex",
-                gap: 5,
-                justifyContent: "flex-end",
-                opacity: 0.5,
+                marginTop: 15,
+                color: karma > 0 ? "#4a8a4a" : karma < 0 ? "#8a3a6a" : "#ccc",
               }}
             >
-              <button
-                onClick={debugAddAllRelics}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#444",
-                  fontSize: 8,
-                }}
-              >
-                DEBUG: ALL
-              </button>
-              <button
-                onClick={debugAddKey}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#444",
-                  fontSize: 8,
-                }}
-              >
-                +KEY
-              </button>
+              {karma > 0 ? "СВЕТ" : karma < 0 ? "ТЬМА" : "РАВНОВЕСИЕ"}
             </div>
-
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setShowBag(true)} style={S.bagBtn}>
-                СУМКА [{inventory.length}]
-              </button>
-              <button onClick={() => setShowRelics(true)} style={S.bagBtn}>
-                РЕЛИКВИИ
-              </button>
-              <button onClick={() => setShowDiary(true)} style={S.bagBtn}>
-                ДНЕВНИК
-              </button>
-              <button onClick={() => setShowKarmaView(true)} style={S.bagBtn}>
-                КАРМА
-              </button>
-            </div>
-
             <button
-              onClick={ascend}
-              disabled={!canAscend}
-              style={canAscend ? S.mainBtn : S.disBtn}
+              onClick={() => {
+                setShowKarmaView(false);
+                playSound("click");
+              }}
+              style={S.closeBagBtn}
             >
-              ▲ ПОДЪЁМ
-            </button>
-            <button
-              onClick={handleRisk}
-              disabled={!canRisk}
-              style={canRisk ? S.subBtn : S.disSub}
-            >
-              РИСК ({riskUsedThisCycle}/{maxRiskPerCycle})
+              ЗАКРЫТЬ
             </button>
           </div>
+        </div>
+      )}
+
+      {!isGlitchActive &&
+        !bossData &&
+        !activeEvent &&
+        !activeRiddle &&
+        !incomingCall && (
+          <div style={S.bottomUI}>
+            <div style={S.terminal}>
+              <div
+                style={{ color: "#E94560", fontSize: 8, fontWeight: "bold" }}
+              >
+                ERNIE
+              </div>
+              <div style={{ color: "#ccc", fontSize: 12 }}>{displayed}</div>
+            </div>
+            {done && phase === "floor" && (
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 10 }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 5,
+                    justifyContent: "flex-end",
+                    opacity: 0.5,
+                  }}
+                >
+                  <button
+                    onClick={debugJump}
+                    style={{ ...S.debugBtn, color: "#00FFFF" }}
+                  >
+                    JUMP
+                  </button>
+                  <button
+                    onClick={resetGame}
+                    style={{ ...S.debugBtn, color: "red" }}
+                  >
+                    RESET
+                  </button>
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      setShowBag(true);
+                      playSound("click");
+                    }}
+                    style={S.bagBtn}
+                  >
+                    СУМКА [{inventory.length}]
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowRelics(true);
+                      playSound("click");
+                    }}
+                    style={S.bagBtn}
+                  >
+                    РЕЛИКВИИ
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowArchitect(true);
+                      playSound("click");
+                    }}
+                    style={S.bagBtn}
+                  >
+                    АПГРЕЙД
+                  </button>
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      setShowDiary(true);
+                      playSound("click");
+                    }}
+                    style={S.bagBtn}
+                  >
+                    ДНЕВНИК
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowKarmaView(true);
+                      playSound("click");
+                    }}
+                    style={{ ...S.bagBtn, position: "relative" }}
+                  >
+                    КАРМА
+                    {karmaFlash && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: -20,
+                          right: 0,
+                          color: karmaFlash === "pos" ? "#00FF00" : "#FF0000",
+                          fontWeight: "bold",
+                          animation: "fadeOutUp 1.5s forwards",
+                        }}
+                      >
+                        {karmaFlash === "pos" ? "+K" : "-K"}
+                      </div>
+                    )}
+                  </button>
+                  <button
+                    onClick={toggleMute}
+                    style={{ ...S.bagBtn, color: muted ? "red" : "#666" }}
+                  >
+                    {muted ? "🔕" : "🔔"}
+                  </button>
+                </div>
+                <button
+                  onClick={ascend}
+                  disabled={!canAscend}
+                  style={canAscend ? S.mainBtn : S.disBtn}
+                >
+                  ▲ ПОДЪЁМ
+                </button>
+                <button
+                  onClick={handleRisk}
+                  disabled={!canRisk}
+                  style={canRisk ? S.subBtn : S.disSub}
+                >
+                  РИСК ({riskUsedThisCycle}/{maxRiskPerCycle})
+                </button>
+              </div>
+            )}
+          </div>
         )}
-      </div>
     </div>
   );
 }
 
-// STYLES
 const S = {
   gameContainer: {
     width: "100%",
@@ -657,12 +2126,24 @@ const S = {
     fontSize: 32,
     fontWeight: 800,
     cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
   },
   overlay: {
     position: "absolute",
     inset: 0,
     background: "rgba(0,0,0,0.95)",
     zIndex: 100,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  highOverlay: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(0,0,0,0.95)",
+    zIndex: 3000,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -674,8 +2155,102 @@ const S = {
     border: "1px solid #444",
     textAlign: "center",
   },
-
-  // BAG & MODALS
+  roleCard: {
+    background: "#1a1a1a",
+    border: "1px solid #444",
+    padding: 20,
+    textAlign: "left",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+  },
+  bossOverlay: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(20,0,0,0.9)",
+    zIndex: 1500,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bossWindow: {
+    width: "90%",
+    border: "2px solid red",
+    background: "#050000",
+    padding: 10,
+  },
+  bossHeader: {
+    color: "red",
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 10,
+    letterSpacing: 2,
+  },
+  bossBody: { display: "flex", flexDirection: "column" },
+  battleLog: {
+    height: 60,
+    overflowY: "auto",
+    border: "1px solid #333",
+    marginTop: 10,
+    padding: 5,
+    fontSize: 10,
+    color: "#ccc",
+    fontFamily: "monospace",
+  },
+  bossBtn: {
+    flex: 1,
+    padding: 15,
+    background: "transparent",
+    border: "1px solid red",
+    color: "red",
+    fontWeight: "bold",
+    cursor: "pointer",
+  },
+  glitchOverlay: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(5,2,2,0.98)",
+    zIndex: 2000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    animation: "glitchSlow 3s infinite ease-in-out",
+  },
+  glitchWindow: {
+    width: "80%",
+    border: "2px solid #4a1111",
+    background: "#1a0505",
+    padding: 2,
+    boxShadow: "0 0 10px rgba(90, 17, 17, 0.2)",
+  },
+  glitchHeader: {
+    background: "#4a1111",
+    color: "#884444",
+    fontWeight: "800",
+    padding: "8px",
+    textAlign: "center",
+    fontSize: 12,
+    letterSpacing: 2,
+  },
+  glitchBody: {
+    padding: "20px",
+    textAlign: "center",
+    color: "#aaa",
+    fontFamily: "Courier New",
+  },
+  rebootBtn: {
+    width: "100%",
+    padding: "15px",
+    background: "rgba(90, 17, 17, 0.1)",
+    border: "1px solid #4a1111",
+    color: "#884444",
+    fontWeight: "bold",
+    fontSize: 14,
+    cursor: "pointer",
+    marginTop: 10,
+    textTransform: "uppercase",
+    transition: "0.3s",
+  },
   bagContent: {
     width: "85%",
     background: "#1a1a1a",
@@ -707,8 +2282,32 @@ const S = {
     fontSize: 10,
     padding: "8px 20px",
   },
-
-  // DIARY GRID
+  chatBox: {
+    maxHeight: "200px",
+    overflowY: "auto",
+    background: "#111",
+    padding: 10,
+    borderRadius: 4,
+    border: "1px solid #333",
+  },
+  chatAction: {
+    flex: 1,
+    padding: 10,
+    background: "#1a1a1a",
+    border: "1px solid #E0C068",
+    color: "#E0C068",
+    cursor: "pointer",
+    fontSize: 10,
+  },
+  chatActionDisabled: {
+    flex: 1,
+    padding: 10,
+    background: "#111",
+    border: "1px solid #333",
+    color: "#444",
+    cursor: "not-allowed",
+    fontSize: 10,
+  },
   diaryGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
@@ -724,8 +2323,6 @@ const S = {
     alignItems: "center",
     justifyContent: "center",
   },
-
-  // KARMA CIRCLE
   karmaCircle: {
     width: 100,
     height: 100,
@@ -745,8 +2342,6 @@ const S = {
     transformOrigin: "center bottom",
     transition: "transform 0.5s ease",
   },
-
-  // BOTTOM UI
   bottomUI: {
     position: "absolute",
     bottom: 0,
@@ -800,8 +2395,13 @@ const S = {
     fontSize: 9,
     cursor: "pointer",
   },
-
-  // RELICS (NEW DESIGN)
+  debugBtn: {
+    background: "none",
+    border: "none",
+    color: "#444",
+    fontSize: 8,
+    cursor: "pointer",
+  },
   relicsContainer: {
     width: "90%",
     aspectRatio: "9/16",
@@ -880,8 +2480,6 @@ const S = {
     fontSize: 10,
     letterSpacing: 2,
   },
-
-  // TOWER MAP (OLD STATIC DESIGN)
   mapWrapper: {
     width: "220px",
     height: "70vh",
@@ -889,7 +2487,6 @@ const S = {
     border: "1px solid #333",
     overflow: "hidden",
   },
-  // Одна картинка на весь фон, не повторяется (no-repeat), фиксирована по центру
   mapBg: {
     position: "absolute",
     inset: 0,
@@ -905,7 +2502,7 @@ const S = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    padding: "40px 0",
+    padding: "150px 0",
   },
   floorCell: {
     height: 30,
@@ -913,5 +2510,28 @@ const S = {
     display: "flex",
     alignItems: "center",
     fontWeight: "bold",
+  },
+  zonePopup: {
+    position: "absolute",
+    top: "20%",
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    background: "rgba(0,0,0,0.8)",
+    padding: 20,
+    borderTop: "1px solid #E0C068",
+    borderBottom: "1px solid #E0C068",
+    zIndex: 500,
+    animation: "fadeIn 3s ease-out forwards",
+  },
+  shopItem: {
+    background: "#111",
+    border: "1px solid #444",
+    padding: 10,
+    color: "#fff",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
   },
 };
