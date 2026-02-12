@@ -1,2121 +1,917 @@
+import { useState, useEffect, useRef } from "react";
+
 /* ══════════════════════════════════════════
-   ERNIE v66.0 — FULL UPDATE
-   Base: v15.0 (working)
-   Added: Karma, 50 floors, Relics, Ghosts,
-   Mirror Floor 16, Diary, Karma Screen,
-   Bottom Nav, Prestige, 5 endings
+   ERNIE v84.0 — HYBRID RESTORATION
+   
+   - RELICS: New "Rusty Metal" Design (Kept as requested).
+   - TOWER: Reverted to simple static background (numbers scroll, image fixed).
+   - DIARY: Reverted to 3x2 Grid with Locks.
+   - KARMA: Reverted to Circle Gauge.
+   - BAG: Reverted to List view.
+   - DEBUG: Added DEBUG buttons back.
    ══════════════════════════════════════════ */
 
-   import React, { useState, useEffect, useCallback, useRef } from "react";
+const IMG = {
+  CABIN:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/elevator.jpg",
+  LAB: "https://raw.githubusercontent.com/akbole/ernie-warden/main/lab.jpg",
+  LOFT: "https://raw.githubusercontent.com/akbole/ernie-warden/main/loft.jpg",
+  GARDEN:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/garden.jpg",
+  OFFICE:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/office.jpg",
+  // Старый фон башни (один раз)
+  TOWER_BG:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/tower_bg.png",
+  // Новый фон реликвий
+  RELICS_BG:
+    "https://raw.githubusercontent.com/akbole/ernie-warden/main/relics_final.jpg",
+};
 
-   const IMG = {
-     CABIN:
-       "https://raw.githubusercontent.com/akbole/ernie-warden/main/elevator.jpg",
-     LAB: "https://raw.githubusercontent.com/akbole/ernie-warden/main/lab.jpg",
-     LOFT: "https://raw.githubusercontent.com/akbole/ernie-warden/main/loft.jpg",
-     GARDEN:
-       "https://raw.githubusercontent.com/akbole/ernie-warden/main/garden.jpg",
-     OFFICE:
-       "https://raw.githubusercontent.com/akbole/ernie-warden/main/office.jpg",
-     SERVERS:
-       "https://raw.githubusercontent.com/akbole/ernie-warden/main/servers.jpg",
-     OBSERVATORY:
-       "https://raw.githubusercontent.com/akbole/ernie-warden/main/observatory.jpg",
-     MIRROR:
-       "https://raw.githubusercontent.com/akbole/ernie-warden/main/mirror.jpg",
-     GLITCH:
-       "https://raw.githubusercontent.com/akbole/ernie-warden/main/glitch.jpg",
-     LIMIT: "https://raw.githubusercontent.com/akbole/ernie-warden/main/limit.jpg",
-   };
-   
-   const ZONES = [
-     { max: 5, img: "CABIN", label: "ПРОМЗОНА", color: "#8B4513" },
-     { max: 10, img: "LAB", label: "ЛАБОРАТОРИЯ", color: "#4a7a8a" },
-     { max: 15, img: "LOFT", label: "ЖИЛАЯ ЗОНА", color: "#a08050" },
-     { max: 20, img: "GARDEN", label: "БОТАНИКА", color: "#4a8a4a" },
-     { max: 25, img: "OFFICE", label: "АРХИВ", color: "#7a7a6a" },
-     { max: 30, img: "SERVERS", label: "СЕРВЕРНОЕ ЯДРО", color: "#3a6a8a" },
-     { max: 35, img: "OBSERVATORY", label: "ОБСЕРВАТОРИЯ", color: "#4a5a8a" },
-     { max: 40, img: "MIRROR", label: "ЗЕРКАЛА", color: "#8a8a9a" },
-     { max: 45, img: "GLITCH", label: "СБОЙ", color: "#8a3a6a" },
-     { max: 50, img: "LIMIT", label: "ПРЕДЕЛ", color: "#E0E0E0" },
-   ];
-   
-   const getZone = (f) => ZONES.find((z) => f <= z.max) || ZONES[9];
-   const getMaxEnergy = (f) =>
-     f <= 10 ? 100 : f <= 25 ? 150 : f <= 40 ? 200 : 250;
-   const getCost = (f) => (f <= 10 ? 25 : f <= 25 ? 40 : f <= 40 ? 60 : 80);
-   
-   /* --- KARMA --- */
-   const clampKarma = (v) => Math.max(-100, Math.min(100, v));
-   
-   const getKarmaColor = (k) => {
-     if (k > 50) return "#FFD700";
-     if (k > 20) return "#FFA500";
-     if (k > -20) return "#888";
-     if (k > -50) return "#a64444";
-     return "#8B0000";
-   };
-   
-   const getErnieTone = (k) => {
-     if (k > 30) return "мягко";
-     if (k > 0) return "спокойно";
-     if (k > -30) return "холодно";
-     return "жестоко";
-   };
-   
-   const getErniePhrase = (k) => {
-     if (k > 60) return "Башня чувствует в тебе свет. Ты согреваешь стены.";
-     if (k > 30) return "Ты идёшь верным путём. Башня помнит добро.";
-     if (k > 0) return "Башня наблюдает. Ты пока в равновесии.";
-     if (k > -30) return "Тени сгущаются вокруг тебя. Будь осторожен.";
-     if (k > -60) return "Башня чувствует тьму в тебе. Стены сжимаются.";
-     return "Ты становишься частью тьмы. Башня поглощает тебя.";
-   };
-   
-   const getFinaleText = (k) => {
-     if (k > 60)
-       return "Ты прошёл Башню с чистой душой. Свет принимает тебя. Но Башня не отпускает навсегда...";
-     if (k > 20)
-       return "Ты сделал больше добра, чем зла. Башня помнит. Дверь открывается... в начало.";
-     if (k > -20)
-       return "Ты — серый. Ни свет, ни тьма. Башня не знает, что с тобой делать.";
-     if (k > -60)
-       return "Тьма в тебе сильнее. Башня поглощает тебя. Ты становишься частью стен.";
-     return "Ты стал новым Эрни. Башня — это ты. И ты ждёшь следующего.";
-   };
-   
-   /* --- FLOOR EVENTS --- */
-   const FLOOR_EVENTS = {
-     3: {
-       type: "choice",
-       title: "ПЕРВЫЙ ВЫБОР",
-       desc: "Две двери. Левая тёплая на ощупь. Правая — ледяная.",
-       choices: [
-         { text: "ЛЕВАЯ (тёплая)", karma: 10, energy: 5, flag: "door_warm" },
-         { text: "ПРАВАЯ (холодная)", karma: -10, energy: -5, flag: "door_cold" },
-       ],
-     },
-     5: { type: "phone", title: "ЗВОНОК" },
-     6: {
-       type: "relic",
-       title: "НАХОДКА",
-       desc: "На полу — ржавый ключ. Он ещё тёплый.",
-       relicName: "Ржавый ключ",
-       relicDesc: "Открывает что-то наверху",
-     },
-     9: {
-       type: "choice",
-       title: "ТЕЛЕФОН",
-       desc: "Старый телефон звонит. Снять трубку?",
-       choices: [
-         { text: "СНЯТЬ ТРУБКУ", karma: 5, energy: -10, flag: "phone_answered" },
-         { text: "НЕ ОТВЕЧАТЬ", karma: -5, energy: 0, flag: "phone_ignored" },
-       ],
-     },
-     10: {
-       type: "choice",
-       title: "РАЗВИЛКА",
-       desc: "Три коридора. Дым. Цветы. Пустота.",
-       choices: [
-         { text: "ДЫМ", karma: -5, energy: -5, flag: "path_smoke" },
-         { text: "ЦВЕТЫ", karma: 10, energy: 5, flag: "path_flowers" },
-         { text: "ПУСТОТА", karma: 0, energy: 0, flag: "path_nothing" },
-       ],
-     },
-     11: {
-       type: "relic",
-       title: "ЧАСЫ",
-       desc: "Настенные часы идут назад. Стрелки дрожат.",
-       relicName: "Сломанные часы",
-       relicDesc: "Время здесь не работает",
-     },
-     12: {
-       type: "ghost",
-       title: "ТЕНЬ",
-       desc: "Твоя тень двигается сама. Она машет тебе.",
-       ghostMsg: "Тень на 12 этаже жила своей жизнью.",
-     },
-     16: {
-       type: "mirror",
-       title: "ЗЕРКАЛО",
-       desc: "Огромное зеркало. Твоё отражение запаздывает на секунду.",
-       choices: [
-         { text: "РАЗБИТЬ ЗЕРКАЛО", karma: 15, energy: 15, flag: "mirror_broken" },
-         { text: "УЙТИ", karma: -5, energy: -10, flag: "mirror_left" },
-       ],
-     },
-     19: {
-       type: "choice",
-       title: "ЗАПЕРТАЯ ДВЕРЬ",
-       desc: "Дверь заперта. Нужен ключ... или сила.",
-       choices: [
-         { text: "ВЫЛОМАТЬ", karma: -10, energy: -15, flag: "door_forced" },
-         { text: "ИСКАТЬ КЛЮЧ", karma: 5, energy: -5, flag: "door_searched" },
-       ],
-     },
-     22: {
-       type: "relic",
-       title: "СВЕЧА",
-       desc: "Одинокая свеча горит без воска. Она не гаснет.",
-       relicName: "Вечная свеча",
-       relicDesc: "Горит без топлива",
-     },
-     23: {
-       type: "ghost",
-       title: "ШАГИ",
-       desc: "За тобой кто-то идёт. Оборачиваешься — никого.",
-       ghostMsg: "Шаги на 23 этаже. Кто-то следует за тобой.",
-     },
-     25: {
-       type: "choice",
-       title: "⚠ ТОЧКА НЕВОЗВРАТА",
-       desc: "Дальше пути назад не будет. Ты уверен?",
-       choices: [
-         { text: "ИДТИ ДАЛЬШЕ", karma: 20, energy: 0, flag: "no_return_forward" },
-         { text: "СОМНЕВАТЬСЯ", karma: -20, energy: -10, flag: "no_return_doubt" },
-       ],
-     },
-     27: {
-       type: "relic",
-       title: "ФОТОГРАФИЯ",
-       desc: "Фото незнакомца. На обороте — дата из будущего.",
-       relicName: "Фото из будущего",
-       relicDesc: "Дата ещё не наступила",
-     },
-     29: {
-       type: "ghost",
-       title: "ХОР ГОЛОСОВ",
-       desc: "Десятки голосов говорят одновременно.",
-       ghostMsg: "Хор голосов на 29 этаже. Они все говорят разное.",
-     },
-     30: {
-       type: "choice",
-       title: "НОВАЯ РАЗВИЛКА",
-       desc: "Два пути. Один освещён. Другой — нет.",
-       choices: [
-         { text: "СВЕТ", karma: 5, energy: 5, flag: "path_light" },
-         { text: "ТЬМА", karma: -5, energy: -5, flag: "path_dark" },
-       ],
-     },
-     33: {
-       type: "choice",
-       title: "ПРИОТКРЫТАЯ ДВЕРЬ",
-       desc: "Дверь приоткрыта. За ней — свет. Или ловушка?",
-       choices: [
-         { text: "ВОЙТИ", karma: 10, energy: -5, flag: "door_entered" },
-         { text: "ПРОЙТИ МИМО", karma: -5, energy: 0, flag: "door_passed" },
-       ],
-     },
-     34: {
-       type: "relic",
-       title: "ПИСЬМО",
-       desc: "Конверт с твоим именем. Внутри — пустой лист.",
-       relicName: "Пустое письмо",
-       relicDesc: "Адресовано тебе, но пусто",
-     },
-     35: {
-       type: "ghost",
-       title: "ЭХО",
-       desc: "Ты говоришь 'привет'. Эхо отвечает 'прощай'.",
-       ghostMsg: "Эхо на 35 этаже отвечает не то, что ты говоришь.",
-     },
-     38: {
-       type: "choice",
-       title: "ТЕЛЕФОН СНОВА",
-       desc: "Тот же телефон. Но голос другой.",
-       choices: [
-         { text: "ОТВЕТИТЬ", karma: 10, energy: -5, flag: "phone2_answered" },
-         { text: "РАЗБИТЬ", karma: -15, energy: 0, flag: "phone2_destroyed" },
-       ],
-     },
-     41: {
-       type: "ghost",
-       title: "ИСЧЕЗНУВШАЯ ТЕНЬ",
-       desc: "Твоя тень исчезла. Ты совсем один.",
-       ghostMsg: "На 41 этаже тень покинула тебя.",
-     },
-     42: {
-       type: "relic",
-       title: "ЗОЛОТОЙ КЛЮЧ",
-       desc: "Золотой ключ. Он светится в темноте.",
-       relicName: "Золотой ключ",
-       relicDesc: "Светится в темноте",
-     },
-     43: {
-       type: "choice",
-       title: "ВЫБОР ЭРНИ",
-       desc: "Эрни: 'Одна дверь — правда. Другая — ложь. Я не скажу какая.'",
-       choices: [
-         { text: "ЛЕВАЯ", karma: 0, energy: -10, flag: "ernie_left" },
-         { text: "ПРАВАЯ", karma: 0, energy: -10, flag: "ernie_right" },
-       ],
-     },
-     46: {
-       type: "ghost",
-       title: "ТВОЙ ГОЛОС",
-       desc: "Ты слышишь свой голос. Он говорит то, что ты думаешь.",
-       ghostMsg: "На 46 этаже ты услышал свои мысли вслух.",
-     },
-     49: {
-       type: "choice",
-       title: "ФИНАЛЬНЫЙ ВЫБОР",
-       desc: "Последняя дверь. За ней — ответ. Или новый вопрос.",
-       choices: [
-         { text: "ОТКРЫТЬ", karma: 25, energy: 0, flag: "final_open" },
-         { text: "НЕ ОТКРЫВАТЬ", karma: -25, energy: 0, flag: "final_closed" },
-       ],
-     },
-   };
-   
-   const PHRASES = {
-     CABIN: [
-       "Лифт скрипит. Ты только начал.",
-       "Стены пахнут маслом и страхом.",
-       "Вверх. Только вверх.",
-     ],
-     LAB: [
-       "Стерильная чистота. Это обман.",
-       "Здесь изучали пределы тела.",
-       "Стеклянные колбы пусты.",
-     ],
-     LOFT: ["Кто-то здесь жил.", "Пыль на мебели.", "Уют — это ловушка."],
-     GARDEN: ["Синтетический фотосинтез.", "Цветы не пахнут.", "Влажность 90%."],
-     OFFICE: ["Миллионы отчетов.", "Бумага гниет.", "Бюрократия вечна."],
-     SERVERS: [
-       "Данные — это новая кровь.",
-       "Гул вентиляторов.",
-       "Система видит тебя.",
-     ],
-     OBSERVATORY: ["Звезды холодные.", "Стекло треснуло.", "Ты так высоко."],
-     MIRROR: [
-       "Твое отражение запаздывает.",
-       "Кто смотрит на тебя?",
-       "Не смотри долго.",
-     ],
-     GLITCH: ["01001000... Помоги...", "Реальность расслаивается.", "ОШИБКА."],
-     LIMIT: ["Предел близко.", "Воздух разрежен.", "Финал ждёт."],
-     DEFAULT: ["Тишина.", "Продолжай движение.", "Энергия падает."],
-   };
-   
-   const RISK_EVENTS = {
-     GOOD: ["Нашел батарею.", "Удачный взлом.", "Нашел аптечку.", "Адреналин."],
-     BAD: [
-       "Короткое замыкание.",
-       "Споткнулся в темноте.",
-       "Утечка газа.",
-       "Психическая атака.",
-     ],
-   };
-   
-   const ALL_RELICS = [
-     { name: "Ржавый ключ", desc: "Открывает что-то наверху", floor: 6 },
-     { name: "Сломанные часы", desc: "Время здесь не работает", floor: 11 },
-     { name: "Вечная свеча", desc: "Горит без топлива", floor: 22 },
-     { name: "Фото из будущего", desc: "Дата ещё не наступила", floor: 27 },
-     { name: "Пустое письмо", desc: "Адресовано тебе, но пусто", floor: 34 },
-     { name: "Золотой ключ", desc: "Светится в темноте", floor: 42 },
-   ];
-   
-   /* --- TYPEWRITER --- */
-   function useTypewriter(fullText, speed) {
-     if (speed === undefined) speed = 35;
-     const [displayed, setDisplayed] = useState("");
-     const [done, setDone] = useState(false);
-     const ref = useRef(null);
-     useEffect(
-       function () {
-         setDisplayed("");
-         setDone(false);
-         var i = 0;
-         clearInterval(ref.current);
-         if (!fullText) {
-           setDone(true);
-           return;
-         }
-         ref.current = setInterval(function () {
-           i++;
-           setDisplayed(fullText.slice(0, i));
-           if (i >= fullText.length) {
-             clearInterval(ref.current);
-             setTimeout(function () {
-               setDone(true);
-             }, 300);
-           }
-         }, speed);
-         return function () {
-           clearInterval(ref.current);
-         };
-       },
-       [fullText, speed]
-     );
-     return { displayed: displayed, done: done };
-   }
-   
-   /* --- HUD COMPONENTS --- */
-   function KarmaAura(props) {
-     var karma = props.karma;
-     var onClick = props.onClick;
-     var color = getKarmaColor(karma);
-     var glowSize = (Math.abs(karma) / 100) * 8 + 4;
-     return (
-       <div
-         onClick={onClick}
-         style={{
-           width: 52,
-           height: 52,
-           borderRadius: "50%",
-           cursor: "pointer",
-           position: "relative",
-           display: "flex",
-           alignItems: "center",
-           justifyContent: "center",
-         }}
-       >
-         <div
-           style={{
-             position: "absolute",
-             top: -4,
-             left: -4,
-             right: -4,
-             bottom: -4,
-             borderRadius: "50%",
-             border: "2px solid " + color,
-             boxShadow:
-               "0 0 " +
-               glowSize +
-               "px " +
-               color +
-               "80, 0 0 " +
-               glowSize * 2 +
-               "px " +
-               color +
-               "30",
-             animation: "karmaAuraPulse 2.5s ease-in-out infinite",
-             transition: "all 1.5s ease",
-           }}
-         />
-         <div
-           style={{
-             width: 40,
-             height: 40,
-             borderRadius: "50%",
-             background:
-               "radial-gradient(circle, " + color + "15, rgba(0,0,0,0.6))",
-             border: "1px solid " + color + "60",
-             display: "flex",
-             alignItems: "center",
-             justifyContent: "center",
-             fontSize: 18,
-             color: color,
-             transition: "all 1s ease",
-           }}
-         >
-           ☉
-         </div>
-       </div>
-     );
-   }
-   
-   function EnergyPulse(props) {
-     var energy = props.energy;
-     var max = props.max;
-     var pct = energy / max;
-     return (
-       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-         <span style={{ fontSize: 11, color: pct < 0.3 ? "#E94560" : "#666" }}>
-           ⚡
-         </span>
-         <div
-           style={{
-             width: 60,
-             height: 4,
-             background: "rgba(255,255,255,0.1)",
-             borderRadius: 2,
-           }}
-         >
-           <div
-             style={{
-               width: pct * 100 + "%",
-               height: "100%",
-               background: pct < 0.3 ? "#E94560" : "#777",
-               transition: "width 0.6s ease",
-             }}
-           />
-         </div>
-       </div>
-     );
-   }
-   
-   function FloorStack(props) {
-     var floor = props.floor;
-     var zoneLabel = props.zoneLabel;
-     var zoneColor = props.zoneColor;
-     return (
-       <div
-         style={{
-           textAlign: "right",
-           display: "flex",
-           flexDirection: "column",
-           alignItems: "flex-end",
-         }}
-       >
-         <div
-           style={{
-             fontSize: 36,
-             fontWeight: 800,
-             color: "#e0e0e0",
-             fontFamily: "'JetBrains Mono', monospace",
-             lineHeight: 1,
-           }}
-         >
-           {floor}
-         </div>
-         <div
-           style={{
-             fontSize: 8,
-             letterSpacing: 2,
-             color: "#666",
-             textTransform: "uppercase",
-             marginBottom: 4,
-           }}
-         >
-           ЭТАЖ
-         </div>
-         <div
-           style={{
-             fontSize: 10,
-             letterSpacing: 1,
-             color: zoneColor,
-             fontWeight: "bold",
-             textTransform: "uppercase",
-             opacity: 0.9,
-           }}
-         >
-           {zoneLabel}
-         </div>
-       </div>
-     );
-   }
-   
-   /* ══════════════════════════════════════════
-         MAIN APP
-         ══════════════════════════════════════════ */
-   function App() {
-     var _useState = function (key, def) {
-       var stored = localStorage.getItem(key);
-       if (stored === null) return def;
-       return stored;
-     };
-   
-     const [appState, setAppState] = useState("intro");
-     const [introStep, setIntroStep] = useState(0);
-   
-     useEffect(function () {
-       var urls = Object.values(IMG);
-       var loaded = 0;
-       urls.forEach(function (url) {
-         var img = new Image();
-         img.src = url;
-         img.onload = function () {
-           loaded++;
-           if (loaded === urls.length)
-             setTimeout(function () {
-               setIntroStep(1);
-             }, 1000);
-         };
-         img.onerror = function () {
-           loaded++;
-           if (loaded === urls.length)
-             setTimeout(function () {
-               setIntroStep(1);
-             }, 1000);
-         };
-       });
-     }, []);
-   
-     /* --- STATE --- */
-     const [floor, setFloor] = useState(function () {
-       return Number(localStorage.getItem("ernie_floor")) || 1;
-     });
-     const [energy, setEnergy] = useState(function () {
-       return Number(localStorage.getItem("ernie_energy")) || 100;
-     });
-     const [karma, setKarma] = useState(function () {
-       return Number(localStorage.getItem("ernie_karma")) || 0;
-     });
-     const [relics, setRelics] = useState(function () {
-       try {
-         return JSON.parse(localStorage.getItem("ernie_relics")) || [];
-       } catch (e) {
-         return [];
-       }
-     });
-     const [ghosts, setGhosts] = useState(function () {
-       try {
-         return JSON.parse(localStorage.getItem("ernie_ghosts")) || [];
-       } catch (e) {
-         return [];
-       }
-     });
-     const [flags, setFlags] = useState(function () {
-       try {
-         return JSON.parse(localStorage.getItem("ernie_flags")) || {};
-       } catch (e) {
-         return {};
-       }
-     });
-     const [prestige, setPrestige] = useState(function () {
-       return Number(localStorage.getItem("ernie_prestige")) || 0;
-     });
-     const [loopCount, setLoopCount] = useState(function () {
-       return Number(localStorage.getItem("ernie_loop")) || 0;
-     });
-     const [moves, setMoves] = useState(function () {
-       return Number(localStorage.getItem("ernie_moves")) || 0;
-     });
-   
-     const [phase, setPhase] = useState("floor");
-     const [trialResult, setTrialResult] = useState(null);
-     const [riddleState, setRiddleState] = useState("done");
-     const [currentText, setCurrentText] = useState("");
-     const [showEvent, setShowEvent] = useState(false);
-     const [showDiary, setShowDiary] = useState(false);
-     const [showKarmaScreen, setShowKarmaScreen] = useState(false);
-   
-     const [fxFlash, setFxFlash] = useState(null);
-     const [buttonsDelayed, setButtonsDelayed] = useState(false);
-     const [isCrash, setIsCrash] = useState(false);
-   
-     const [showDev, setShowDev] = useState(false);
-     const [devClicks, setDevClicks] = useState(0);
-     const [devJump, setDevJump] = useState("");
-   
-     /* --- SAVE --- */
-     useEffect(
-       function () {
-         if (appState === "game") {
-           localStorage.setItem("ernie_floor", floor);
-           localStorage.setItem("ernie_energy", energy);
-           localStorage.setItem("ernie_karma", karma);
-           localStorage.setItem("ernie_relics", JSON.stringify(relics));
-           localStorage.setItem("ernie_ghosts", JSON.stringify(ghosts));
-           localStorage.setItem("ernie_flags", JSON.stringify(flags));
-           localStorage.setItem("ernie_prestige", prestige);
-           localStorage.setItem("ernie_loop", loopCount);
-           localStorage.setItem("ernie_moves", moves);
-         }
-       },
-       [
-         floor,
-         energy,
-         karma,
-         relics,
-         ghosts,
-         flags,
-         prestige,
-         loopCount,
-         moves,
-         appState,
-       ]
-     );
-   
-     /* --- DEATH --- */
-     useEffect(
-       function () {
-         if (
-           appState === "game" &&
-           energy <= 0 &&
-           phase !== "dead" &&
-           phase !== "won" &&
-           phase !== "finale"
-         ) {
-           setTimeout(function () {
-             setPhase("dead");
-           }, 500);
-         }
-       },
-       [energy, phase, appState]
-     );
-   
-     var triggerFlash = function (type) {
-       setFxFlash(type);
-       setTimeout(function () {
-         setFxFlash(null);
-       }, 300);
-     };
-     var vibrate = function (p) {
-       if (navigator.vibrate) navigator.vibrate(p);
-     };
-     var addMove = function () {
-       setMoves(function (m) {
-         return m + 1;
-       });
-     };
-   
-     /* --- TEXT --- */
-     useEffect(
-       function () {
-         var txt = "";
-         if (phase === "won") txt = "";
-         else if (phase === "dead") txt = "СИГНАЛ ПОТЕРЯН.";
-         else if (phase === "ascending") txt = "▲ ...";
-         else if (phase === "descending") txt = "▼ СБОЙ. ВОЗВРАТ...";
-         else if (phase === "resting") txt = "Режим восстановления...";
-         else if (phase === "finale") txt = "";
-         else if (trialResult) txt = trialResult;
-         else if (isCrash) txt = "";
-         else if (showEvent) txt = "";
-         else if (energy <= 20 && energy > 0) txt = "ВНИМАНИЕ: Энергия на исходе.";
-         else {
-           var ev = FLOOR_EVENTS[floor];
-           if (ev && ev.type === "phone") {
-             txt =
-               riddleState === "ringing"
-                 ? "ВХОДЯЩИЙ ЗВОНОК... Неизвестный ID."
-                 : "Эрни: 'Я принадлежу тебе, но другие используют меня чаще. Что я?'";
-           } else if (floor === 20) {
-             txt =
-               "Эрни говорит " +
-               getErnieTone(karma) +
-               ': "Ты далеко зашёл. Но ты ещё ничего не понял."';
-           } else if (floor === 40) {
-             txt =
-               "Эрни говорит " +
-               getErnieTone(karma) +
-               ': "Ты почти понял. Почти."';
-           } else if (floor === 50) {
-             txt = "";
-           } else if (floor === 1) {
-             txt = "Этаж 1. Начало.";
-           } else {
-             var z = getZone(floor);
-             var opts = PHRASES[z.img] || PHRASES.DEFAULT;
-             txt = opts[Math.floor(Math.random() * opts.length)];
-           }
-         }
-         setCurrentText(txt);
-       },
-       [floor, phase, energy, trialResult, riddleState, isCrash, showEvent, karma]
-     );
-   
-     /* --- FLOOR TRIGGERS --- */
-     useEffect(
-       function () {
-         setButtonsDelayed(false);
-         setIsCrash(false);
-         setShowEvent(false);
-         setTrialResult(null);
-         var ev = FLOOR_EVENTS[floor];
-         if (ev && ev.type === "phone") {
-           setRiddleState("ringing");
-         } else {
-           setRiddleState("done");
-         }
-         if (ev && phase === "floor") {
-           setTimeout(function () {
-             setShowEvent(true);
-           }, 800);
-         }
-         if (floor === 23) {
-           setButtonsDelayed(true);
-           setTimeout(function () {
-             setButtonsDelayed(false);
-           }, 4000);
-         }
-         if (floor === 44) {
-           setTimeout(function () {
-             setIsCrash(true);
-             setTimeout(function () {
-               setIsCrash(false);
-             }, 3000);
-           }, 1000);
-         }
-       },
-       [floor]
-     );
-   
-     var zone = getZone(floor);
-     var max = getMaxEnergy(floor);
-     var cost = getCost(floor);
-     var canAscend = energy >= cost;
-     var bg =
-       phase === "ascending"
-         ? IMG.CABIN
-         : phase === "descending"
-         ? IMG.GLITCH
-         : IMG[zone.img];
-     var typewriter = useTypewriter(currentText, phase === "ascending" ? 80 : 35);
-     var displayed = typewriter.displayed;
-     var done = typewriter.done;
-   
-     /* --- ACTIONS --- */
-     var ascend = function () {
-       if (!canAscend || phase !== "floor") return;
-       vibrate(50);
-       setPhase("ascending");
-       setEnergy(function (e) {
-         return e - cost;
-       });
-       setTrialResult(null);
-       setShowEvent(false);
-       addMove();
-       vibrate([100, 50, 100, 50, 100]);
-       setTimeout(function () {
-         var nextFloor = Math.min(floor + 1, 50);
-         setFloor(nextFloor);
-         if (nextFloor === 50) {
-           setPhase("finale");
-         } else {
-           setPhase("floor");
-         }
-       }, 2200);
-     };
-   
-     var rest = function () {
-       setPhase("resting");
-       triggerFlash("green");
-       addMove();
-       setTimeout(function () {
-         setEnergy(function (e) {
-           return Math.min(e + 15, max);
-         });
-         setPhase("floor");
-       }, 3000);
-     };
-   
-     var tryRisk = function () {
-       if (energy < 20) return;
-       var stake = Math.floor(energy * 0.4);
-       setEnergy(function (e) {
-         return e - stake;
-       });
-       addMove();
-       if (Math.random() > 0.45) {
-         var reward = stake * 2;
-         triggerFlash("green");
-         setEnergy(function (e) {
-           return Math.min(e + reward, max);
-         });
-         var msg =
-           RISK_EVENTS.GOOD[Math.floor(Math.random() * RISK_EVENTS.GOOD.length)];
-         setTrialResult(msg + " +" + reward + " энергии.");
-       } else {
-         triggerFlash("red");
-         var msg =
-           RISK_EVENTS.BAD[Math.floor(Math.random() * RISK_EVENTS.BAD.length)];
-         setTrialResult(msg + " -" + stake + " энергии.");
-       }
-     };
-   
-     var handleEventChoice = function (choice) {
-       setKarma(function (k) {
-         return clampKarma(k + (choice.karma || 0));
-       });
-       setEnergy(function (e) {
-         return Math.max(0, Math.min(max, e + (choice.energy || 0)));
-       });
-       if (choice.flag)
-         setFlags(function (f) {
-           var n = Object.assign({}, f);
-           n[choice.flag] = true;
-           return n;
-         });
-       triggerFlash(choice.karma >= 0 ? "green" : "red");
-       addMove();
-       setShowEvent(false);
-       setTrialResult(
-         choice.karma > 0
-           ? "Карма сдвинулась к свету."
-           : choice.karma < 0
-           ? "Карма сдвинулась к тьме."
-           : null
-       );
-     };
-   
-     var handleCollectRelic = function (name, desc) {
-       setRelics(function (r) {
-         return r.concat([{ name: name, desc: desc, floor: floor }]);
-       });
-       triggerFlash("green");
-       addMove();
-       setShowEvent(false);
-       setTrialResult("Реликвия: " + name);
-     };
-   
-     var handleSkipRelic = function () {
-       setShowEvent(false);
-       setTrialResult("Ты прошёл мимо.");
-     };
-   
-     var handleHearGhost = function (msg) {
-       setGhosts(function (g) {
-         return g.concat([{ msg: msg, floor: floor }]);
-       });
-       triggerFlash("green");
-       addMove();
-       setShowEvent(false);
-       setTrialResult("Ты услышал послание...");
-     };
-   
-     var handleIgnoreGhost = function () {
-       setShowEvent(false);
-       setTrialResult("Ты проигнорировал голос.");
-     };
-   
-     var answerPhone = function () {
-       if (floor === 5) {
-         setRiddleState("active");
-       } else {
-         setRiddleState("static");
-         triggerFlash("red");
-         vibrate([50, 50, 50, 50, 500]);
-         setTimeout(function () {
-           ascend();
-         }, 3500);
-       }
-     };
-   
-     var solveRiddle = function (isCorrect) {
-       setRiddleState("solved");
-       addMove();
-       if (isCorrect) {
-         triggerFlash("green");
-         setTrialResult("Эрни: 'Верно.' (+30)");
-         setEnergy(function (e) {
-           return Math.min(e + 30, max);
-         });
-         setKarma(function (k) {
-           return clampKarma(k + 10);
-         });
-       } else {
-         triggerFlash("red");
-         setTrialResult("Эрни: 'Ошибка.' (-20)");
-         setEnergy(function (e) {
-           return Math.max(0, e - 20);
-         });
-         setKarma(function (k) {
-           return clampKarma(k - 10);
-         });
-       }
-       setTimeout(function () {
-         ascend();
-       }, 3500);
-     };
-   
-     var doPrestige = function () {
-       setPrestige(function (p) {
-         return p + 1;
-       });
-       setFloor(1);
-       setEnergy(100);
-       setKarma(0);
-       setRelics([]);
-       setGhosts([]);
-       setFlags({});
-       setLoopCount(0);
-       setMoves(0);
-       setPhase("floor");
-       setTrialResult(null);
-       setShowEvent(false);
-       setShowDiary(false);
-     };
-   
-     var rebootGame = function () {
-       localStorage.clear();
-       window.location.reload();
-     };
-     var reviveGame = function () {
-       setEnergy(50);
-       setPhase("floor");
-     };
-   
-     var introTypewriter = useTypewriter("Ты здесь?", 70);
-     var handleStart = function () {
-       setAppState("game");
-     };
-   
-     var toggleDev = function () {
-       setDevClicks(function (c) {
-         return c + 1;
-       });
-       if (devClicks + 1 >= 3) {
-         setShowDev(!showDev);
-         setDevClicks(0);
-       }
-     };
-   
-     var handleDevJump = function (e) {
-       e.preventDefault();
-       var f = Number(devJump);
-       if (f > 0 && f <= 50) {
-         setFloor(f);
-         setPhase("floor");
-         setTrialResult(null);
-         setIsCrash(false);
-         setButtonsDelayed(false);
-         setShowEvent(false);
-         setDevJump("");
-       }
-     };
-   
-     /* ═══ RENDER: INTRO ═══ */
-     if (appState === "intro") {
-       return (
-         <div style={S.introContainer}>
-           <style dangerouslySetInnerHTML={{ __html: CSS }} />
-           {introStep === 0 && <div style={{ opacity: 0 }}>...</div>}
-           {introStep >= 1 && (
-             <div style={S.introText}>{introTypewriter.displayed}</div>
-           )}
-           {introStep >= 1 && introTypewriter.done && (
-             <button onClick={handleStart} style={S.introBtn}>
-               [ ДА ]
-             </button>
-           )}
-         </div>
-       );
-     }
-   
-     /* ═══ RENDER: CRASH ═══ */
-     if (isCrash)
-       return (
-         <div style={S.crashScreen}>
-           <style dangerouslySetInnerHTML={{ __html: CSS }} />
-           <div style={S.crashText}>
-             FATAL ERROR 0x44
-             <br />
-             SYSTEM HALTED
-             <br />
-             REBOOTING...
-           </div>
-         </div>
-       );
-   
-     /* ═══ RENDER: FINALE ═══ */
-     if (phase === "finale" || (phase === "floor" && floor === 50)) {
-       var karmaColor = getKarmaColor(karma);
-       return (
-         <div
-           style={Object.assign({}, S.winContainer, {
-             backgroundImage: "url(" + IMG.LIMIT + ")",
-             backgroundSize: "cover",
-           })}
-         >
-           <style dangerouslySetInnerHTML={{ __html: CSS }} />
-           <div style={S.winOverlay}>
-             <div style={S.winContent}>
-               <h1 style={S.winTitle}>БАШНЯ ПРОЙДЕНА</h1>
-               <p style={Object.assign({}, S.winQuote, { color: karmaColor })}>
-                 {getFinaleText(karma)}
-               </p>
-               <div style={{ margin: "20px 0", fontSize: 12, color: "#555" }}>
-                 Реликвий: {relics.length} | Призраков: {ghosts.length} | Ходов:{" "}
-                 {moves}
-               </div>
-               <button onClick={doPrestige} style={S.rebootBtn}>
-                 🔄 ПРЕСТИЖ #{prestige + 1}
-               </button>
-               <div style={{ marginTop: 10 }}>
-                 <button
-                   onClick={rebootGame}
-                   style={Object.assign({}, S.rebootBtn, {
-                     background: "#333",
-                     color: "#888",
-                   })}
-                 >
-                   ПОЛНЫЙ СБРОС
-                 </button>
-               </div>
-             </div>
-           </div>
-         </div>
-       );
-     }
-   
-     /* ═══ RENDER: DEAD ═══ */
-     if (phase === "dead")
-       return (
-         <div style={S.deathScreen}>
-           <style dangerouslySetInnerHTML={{ __html: CSS }} />
-           <div style={S.deathIcon}>☠</div>
-           <div style={S.deathText}>СИГНАЛ ПОТЕРЯН</div>
-           <div style={{ color: "#666", fontSize: 11, marginBottom: 20 }}>
-             Этаж: {floor} | Карма:{" "}
-             {karma > 0 ? "свет" : karma < 0 ? "тьма" : "серый"}
-           </div>
-           <button onClick={reviveGame} style={S.failBtn}>
-             ВОССТАНОВИТЬ СИСТЕМУ
-           </button>
-         </div>
-       );
-   
-     /* ═══ EVENT MODAL ═══ */
-     var eventModal = null;
-     var ev = FLOOR_EVENTS[floor];
-     if (ev && showEvent) {
-       eventModal = (
-         <div
-           style={S.eventOverlay}
-           onClick={function () {
-             setShowEvent(false);
-           }}
-         >
-           <div
-             style={S.eventBox}
-             onClick={function (e) {
-               e.stopPropagation();
-             }}
-           >
-             <div style={S.eventTitle}>{ev.title}</div>
-             <div style={S.eventDesc}>{ev.desc}</div>
-             {(ev.type === "choice" || ev.type === "mirror") && ev.choices && (
-               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                 {ev.choices.map(function (c, i) {
-                   return (
-                     <button
-                       key={i}
-                       onClick={function () {
-                         handleEventChoice(c);
-                       }}
-                       style={i === 0 ? S.mainBtn : S.subBtnFull}
-                     >
-                       {c.text}
-                     </button>
-                   );
-                 })}
-               </div>
-             )}
-             {ev.type === "relic" && (
-               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                 <button
-                   onClick={function () {
-                     handleCollectRelic(ev.relicName, ev.relicDesc);
-                   }}
-                   style={S.keyBtn}
-                 >
-                   🎒 ВЗЯТЬ: {ev.relicName}
-                 </button>
-                 <button onClick={handleSkipRelic} style={S.subBtnFull}>
-                   ОСТАВИТЬ
-                 </button>
-               </div>
-             )}
-             {ev.type === "ghost" && (
-               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                 <button
-                   onClick={function () {
-                     handleHearGhost(ev.ghostMsg);
-                   }}
-                   style={S.ghostBtn}
-                 >
-                   👻 СЛУШАТЬ
-                 </button>
-                 <button onClick={handleIgnoreGhost} style={S.subBtnFull}>
-                   ИГНОРИРОВАТЬ
-                 </button>
-               </div>
-             )}
-           </div>
-         </div>
-       );
-     }
-   
-     /* ═══ KARMA SCREEN ═══ */
-     var karmaScreen = null;
-     if (showKarmaScreen) {
-       var kColor = getKarmaColor(karma);
-       var phrase = getErniePhrase(karma);
-       var towerLight = karma > 0 ? "#E0C068" : karma < -20 ? "#a64444" : "#555";
-       var towerDark = karma < 0 ? "#333" : "#1a1a1a";
-       karmaScreen = (
-         <div
-           style={S.eventOverlay}
-           onClick={function () {
-             setShowKarmaScreen(false);
-           }}
-         >
-           <div
-             style={S.karmaScreenBox}
-             onClick={function (e) {
-               e.stopPropagation();
-             }}
-           >
-             <div
-               style={{
-                 position: "absolute",
-                 top: 0,
-                 bottom: 0,
-                 left: "50%",
-                 transform: "translateX(-50%)",
-                 width: 60,
-                 background:
-                   "linear-gradient(to top, " +
-                   towerDark +
-                   ", " +
-                   towerLight +
-                   "20)",
-                 borderLeft: "1px solid " + towerLight + "30",
-                 borderRight: "1px solid " + towerLight + "30",
-                 opacity: 0.4,
-               }}
-             />
-             <div style={{ position: "relative", zIndex: 2, textAlign: "center" }}>
-               <div
-                 style={{
-                   fontSize: 11,
-                   letterSpacing: 3,
-                   color: "#666",
-                   marginBottom: 30,
-                   textTransform: "uppercase",
-                 }}
-               >
-                 Твой Путь
-               </div>
-               <div
-                 style={{
-                   width: 160,
-                   height: 160,
-                   borderRadius: "50%",
-                   margin: "0 auto 30px",
-                   border: "3px solid " + kColor,
-                   boxShadow:
-                     "0 0 20px " +
-                     kColor +
-                     "60, 0 0 40px " +
-                     kColor +
-                     "30, 0 0 60px " +
-                     kColor +
-                     "15",
-                   display: "flex",
-                   alignItems: "center",
-                   justifyContent: "center",
-                   animation: "karmaAuraPulse 3s ease-in-out infinite",
-                   transition: "all 2s ease",
-                 }}
-               >
-                 <div
-                   style={{
-                     fontSize: 40,
-                     color: kColor,
-                     opacity: 0.6,
-                     transition: "color 2s ease",
-                   }}
-                 >
-                   ☉
-                 </div>
-               </div>
-               <div
-                 style={{
-                   fontSize: 13,
-                   color: "#aaa",
-                   lineHeight: 1.8,
-                   fontStyle: "italic",
-                   padding: "0 20px",
-                   marginBottom: 30,
-                   minHeight: 50,
-                 }}
-               >
-                 "{phrase}"
-               </div>
-               <div
-                 style={{
-                   display: "flex",
-                   justifyContent: "center",
-                   gap: 30,
-                   marginBottom: 20,
-                 }}
-               >
-                 <div style={{ textAlign: "center" }}>
-                   <div
-                     style={{
-                       width: 36,
-                       height: 50,
-                       margin: "0 auto 6px",
-                       background:
-                         "linear-gradient(to top, " +
-                         towerDark +
-                         ", " +
-                         towerLight +
-                         "40)",
-                       border: "1px solid " + towerLight + "50",
-                       borderRadius: 2,
-                       boxShadow: "0 0 8px " + towerLight + "20",
-                     }}
-                   />
-                   <div style={{ fontSize: 8, color: "#555", letterSpacing: 1 }}>
-                     БАШНЯ
-                   </div>
-                 </div>
-                 <div style={{ textAlign: "center" }}>
-                   <div
-                     style={{
-                       width: 50,
-                       height: 50,
-                       margin: "0 auto 6px",
-                       display: "flex",
-                       alignItems: "center",
-                       justifyContent: "center",
-                       fontSize: 10,
-                       color: "#555",
-                       letterSpacing: 2,
-                     }}
-                   >
-                     {karma > 20 ? "∿∿∿" : karma < -20 ? "▓▓▓" : "───"}
-                   </div>
-                   <div style={{ fontSize: 8, color: "#555", letterSpacing: 1 }}>
-                     ЗВУК
-                   </div>
-                 </div>
-                 <div style={{ textAlign: "center" }}>
-                   <div
-                     style={{
-                       width: 36,
-                       height: 50,
-                       margin: "0 auto 6px",
-                       display: "flex",
-                       alignItems: "center",
-                       justifyContent: "center",
-                       fontSize: 24,
-                       color: kColor,
-                       transition: "color 2s ease",
-                     }}
-                   >
-                     ◉
-                   </div>
-                   <div style={{ fontSize: 8, color: "#555", letterSpacing: 1 }}>
-                     ЭРНИ
-                   </div>
-                 </div>
-               </div>
-               <button
-                 onClick={function () {
-                   setShowKarmaScreen(false);
-                 }}
-                 style={S.closeBtn}
-               >
-                 ЗАКРЫТЬ
-               </button>
-             </div>
-           </div>
-         </div>
-       );
-     }
-   
-     /* ═══ DIARY ═══ */
-     var diaryModal = null;
-     if (showDiary) {
-       var foundNames = relics.map(function (r) {
-         return r.name;
-       });
-       diaryModal = (
-         <div
-           style={S.eventOverlay}
-           onClick={function () {
-             setShowDiary(false);
-           }}
-         >
-           <div
-             style={S.diaryBox}
-             onClick={function (e) {
-               e.stopPropagation();
-             }}
-           >
-             <div style={{ textAlign: "center", marginBottom: 20 }}>
-               <div style={{ fontSize: 22, marginBottom: 4 }}>📖</div>
-               <div
-                 style={{
-                   fontSize: 14,
-                   fontWeight: "bold",
-                   color: "#E0C068",
-                   letterSpacing: 3,
-                 }}
-               >
-                 ДНЕВНИК
-               </div>
-             </div>
-             <div
-               style={{
-                 display: "grid",
-                 gridTemplateColumns: "1fr 1fr 1fr",
-                 gap: 10,
-                 marginBottom: 20,
-               }}
-             >
-               {ALL_RELICS.map(function (relic, i) {
-                 var found = foundNames.indexOf(relic.name) !== -1;
-                 return (
-                   <div
-                     key={i}
-                     style={{
-                       background: found
-                         ? "rgba(224,192,104,0.08)"
-                         : "rgba(30,30,30,0.8)",
-                       border: found
-                         ? "1px solid rgba(224,192,104,0.25)"
-                         : "1px solid #333",
-                       borderRadius: 4,
-                       padding: 10,
-                       textAlign: "center",
-                       opacity: found ? 1 : 0.4,
-                       transition: "all 0.3s ease",
-                       minHeight: 90,
-                       display: "flex",
-                       flexDirection: "column",
-                       alignItems: "center",
-                       justifyContent: "center",
-                     }}
-                   >
-                     <div style={{ fontSize: 24, marginBottom: 6 }}>
-                       {found ? "🔮" : "🔒"}
-                     </div>
-                     <div
-                       style={{
-                         fontSize: 9,
-                         color: found ? "#E0C068" : "#444",
-                         fontWeight: "bold",
-                         letterSpacing: 0.5,
-                       }}
-                     >
-                       {found ? relic.name : "???"}
-                     </div>
-                     {found && (
-                       <div style={{ fontSize: 8, color: "#888", marginTop: 3 }}>
-                         Этаж {relic.floor}
-                       </div>
-                     )}
-                   </div>
-                 );
-               })}
-             </div>
-             {ghosts.length > 0 && (
-               <div style={{ marginBottom: 16 }}>
-                 <div
-                   style={{
-                     fontSize: 10,
-                     color: "#888",
-                     marginBottom: 8,
-                     letterSpacing: 1,
-                   }}
-                 >
-                   ПРИЗРАКИ ({ghosts.length})
-                 </div>
-                 {ghosts.map(function (g, i) {
-                   return (
-                     <div
-                       key={i}
-                       style={{
-                         fontSize: 10,
-                         color: "#666",
-                         marginBottom: 4,
-                         fontStyle: "italic",
-                         paddingLeft: 10,
-                         borderLeft: "2px solid #444",
-                       }}
-                     >
-                       👻 Этаж {g.floor}: "{g.msg}"
-                     </div>
-                   );
-                 })}
-               </div>
-             )}
-             {Object.keys(flags).length > 0 && (
-               <div style={{ marginBottom: 16 }}>
-                 <div
-                   style={{
-                     fontSize: 10,
-                     color: "#888",
-                     marginBottom: 8,
-                     letterSpacing: 1,
-                   }}
-                 >
-                   РЕШЕНИЯ ({Object.keys(flags).length})
-                 </div>
-                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                   {Object.keys(flags).map(function (f) {
-                     return (
-                       <span
-                         key={f}
-                         style={{
-                           fontSize: 8,
-                           color: "#555",
-                           background: "rgba(255,255,255,0.05)",
-                           padding: "2px 6px",
-                           borderRadius: 2,
-                           border: "1px solid #333",
-                         }}
-                       >
-                         {f}
-                       </span>
-                     );
-                   })}
-                 </div>
-               </div>
-             )}
-             <div
-               style={{
-                 fontSize: 10,
-                 color: "#555",
-                 marginTop: 10,
-                 textAlign: "center",
-               }}
-             >
-               Престиж: {prestige} | Ходов: {moves}
-             </div>
-             <button
-               onClick={function () {
-                 setShowDiary(false);
-               }}
-               style={Object.assign({}, S.closeBtn, {
-                 marginTop: 16,
-                 width: "100%",
-               })}
-             >
-               ЗАКРЫТЬ
-             </button>
-           </div>
-         </div>
-       );
-     }
-   
-     /* ═══ RENDER: GAME ═══ */
-     return (
-       <div style={S.gameContainer}>
-         <style dangerouslySetInnerHTML={{ __html: CSS }} />
-   
-         {/* FX */}
-         <div
-           style={{
-             position: "absolute",
-             inset: 0,
-             pointerEvents: "none",
-             zIndex: 999,
-             background:
-               fxFlash === "red"
-                 ? "rgba(255,0,0,0.2)"
-                 : fxFlash === "green"
-                 ? "rgba(0,255,0,0.1)"
-                 : "transparent",
-             transition: "background 0.2s ease-out",
-           }}
-         />
-   
-         {/* DEV */}
-         {showDev && (
-           <div style={S.devPanel}>
-             <span style={{ color: "#0f0", fontSize: "10px" }}>DEV:</span>
-             <form
-               onSubmit={handleDevJump}
-               style={{ display: "flex", gap: "5px", flex: 1 }}
-             >
-               <input
-                 type="number"
-                 placeholder="Lvl"
-                 value={devJump}
-                 onChange={function (e) {
-                   setDevJump(e.target.value);
-                 }}
-                 style={S.devInput}
-               />
-               <button type="submit" style={S.devBtn}>
-                 GO
-               </button>
-             </form>
-             <button
-               onClick={function () {
-                 setEnergy(max);
-               }}
-               style={S.devBtn}
-             >
-               MAX⚡
-             </button>
-             <button
-               onClick={function () {
-                 setKarma(50);
-               }}
-               style={S.devBtn}
-             >
-               K+
-             </button>
-             <button
-               onClick={function () {
-                 setKarma(-50);
-               }}
-               style={S.devBtn}
-             >
-               K-
-             </button>
-             <button onClick={rebootGame} style={S.devBtn}>
-               RST
-             </button>
-           </div>
-         )}
-   
-         {/* BG */}
-         <div
-           style={{
-             position: "absolute",
-             inset: 0,
-             backgroundImage: "url(" + bg + ")",
-             backgroundSize: "cover",
-             backgroundPosition: "center",
-             filter:
-               phase === "ascending" || phase === "descending"
-                 ? "brightness(0.4) contrast(1.2)"
-                 : "brightness(0.65) contrast(1.1)",
-             transition: "filter 0.8s",
-             animation:
-               phase === "ascending" || phase === "descending"
-                 ? "shake 0.15s linear infinite"
-                 : "none",
-           }}
-         />
-   
-         {/* KARMA TINT */}
-         <div
-           style={{
-             position: "absolute",
-             inset: 0,
-             pointerEvents: "none",
-             zIndex: 1,
-             background:
-               karma > 20
-                 ? "rgba(255,215,0,0.03)"
-                 : karma < -20
-                 ? "rgba(139,0,0,0.05)"
-                 : "transparent",
-             transition: "background 2s ease",
-           }}
-         />
-   
-         {/* HUD TOP */}
-         <div
-           style={{
-             position: "absolute",
-             top: 40,
-             left: 20,
-             right: 20,
-             zIndex: 40,
-             display: "flex",
-             justifyContent: "space-between",
-             alignItems: "flex-start",
-           }}
-         >
-           <div
-             style={{
-               display: "flex",
-               flexDirection: "column",
-               alignItems: "flex-start",
-               gap: 8,
-             }}
-           >
-             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-               <KarmaAura
-                 karma={karma}
-                 onClick={function () {
-                   setShowKarmaScreen(true);
-                 }}
-               />
-               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                 <EnergyPulse energy={energy} max={max} />
-                 {prestige > 0 && (
-                   <div
-                     style={{ fontSize: 9, color: "#FFD700", letterSpacing: 1 }}
-                   >
-                     ★ ПРЕСТИЖ {prestige}
-                   </div>
-                 )}
-               </div>
-             </div>
-           </div>
-           <FloorStack
-             floor={floor}
-             zoneLabel={zone.label}
-             zoneColor={zone.color}
-           />
-         </div>
-   
-         {/* BOTTOM PANEL */}
-         <div
-           style={{
-             position: "absolute",
-             left: 0,
-             right: 0,
-             bottom: 0,
-             zIndex: 40,
-             padding: "0 20px 0",
-             background: "linear-gradient(to top, rgba(0,0,0,0.95), transparent)",
-           }}
-         >
-           {/* Terminal */}
-           <div onClick={toggleDev} style={S.terminalBox}>
-             <div
-               style={{
-                 display: "flex",
-                 alignItems: "center",
-                 gap: 6,
-                 marginBottom: 4,
-               }}
-             >
-               <div style={{ color: "#E94560", fontSize: 8, fontWeight: "bold" }}>
-                 ERNIE
-               </div>
-               <div style={{ fontSize: 8, color: "#444" }}>
-                 {getErnieTone(karma).toUpperCase()}
-               </div>
-             </div>
-             <div style={{ color: "#ccc", fontSize: 12, lineHeight: 1.4 }}>
-               {displayed}
-               {!done && <span className="cursor" />}
-             </div>
-           </div>
-   
-           {/* Action buttons */}
-           {done && phase === "floor" && !showEvent && (
-             <div
-               style={{
-                 animation: "fadeIn 0.4s ease-out",
-                 display: "flex",
-                 flexDirection: "column",
-                 gap: 10,
-                 marginBottom: 12,
-               }}
-             >
-               {buttonsDelayed ? (
-                 <div style={S.systemMsg}>ОЖИДАНИЕ СИСТЕМЫ...</div>
-               ) : FLOOR_EVENTS[floor] &&
-                 FLOOR_EVENTS[floor].type === "phone" &&
-                 riddleState === "ringing" ? (
-                 <button onClick={answerPhone} style={S.rustPulseBtn}>
-                   📞 ОТВЕТИТЬ
-                 </button>
-               ) : floor === 5 && riddleState === "active" ? (
-                 <div style={{ display: "flex", gap: 10 }}>
-                   <button
-                     onClick={function () {
-                       solveRiddle(true);
-                     }}
-                     style={S.subBtn}
-                   >
-                     ИМЯ
-                   </button>
-                   <button
-                     onClick={function () {
-                       solveRiddle(false);
-                     }}
-                     style={S.subBtn}
-                   >
-                     СУДЬБА
-                   </button>
-                 </div>
-               ) : (
-                 <React.Fragment>
-                   <button
-                     onClick={ascend}
-                     disabled={!canAscend}
-                     style={canAscend ? S.mainBtn : S.disabledBtn}
-                   >
-                     ▲ ПОДЪЁМ ({cost})
-                   </button>
-                   <div style={{ display: "flex", gap: 10 }}>
-                     <button onClick={rest} style={S.subBtn}>
-                       ОТДЫХ
-                     </button>
-                     <button
-                       onClick={tryRisk}
-                       disabled={energy < 20}
-                       style={energy >= 20 ? S.subBtn : S.disabledSubBtn}
-                     >
-                       РИСК
-                     </button>
-                     {FLOOR_EVENTS[floor] && (
-                       <button
-                         onClick={function () {
-                           setShowEvent(true);
-                         }}
-                         style={S.subBtn}
-                       >
-                         {FLOOR_EVENTS[floor].type === "relic"
-                           ? "🔮"
-                           : FLOOR_EVENTS[floor].type === "ghost"
-                           ? "👻"
-                           : FLOOR_EVENTS[floor].type === "mirror"
-                           ? "🪞"
-                           : "❓"}{" "}
-                         СОБЫТИЕ
-                       </button>
-                     )}
-                   </div>
-                 </React.Fragment>
-               )}
-             </div>
-           )}
-   
-           {/* BOTTOM NAV */}
-           <div style={S.bottomNav}>
-             <button
-               onClick={function () {
-                 setShowDiary(true);
-                 setShowKarmaScreen(false);
-               }}
-               style={S.bottomNavBtn}
-             >
-               <span style={{ fontSize: 18 }}>📖</span>
-               <span style={{ fontSize: 9, letterSpacing: 1 }}>Diary</span>
-             </button>
-             <button
-               onClick={function () {
-                 setShowDiary(false);
-                 setShowKarmaScreen(false);
-               }}
-               style={Object.assign({}, S.bottomNavBtn, {
-                 borderTop: "2px solid #a64444",
-               })}
-             >
-               <span style={{ fontSize: 18 }}>🏛</span>
-               <span style={{ fontSize: 9, letterSpacing: 1 }}>Tower</span>
-             </button>
-             <button onClick={function () {}} style={S.bottomNavBtn}>
-               <span style={{ fontSize: 18 }}>⚙</span>
-               <span style={{ fontSize: 9, letterSpacing: 1 }}>Settings</span>
-             </button>
-           </div>
-         </div>
-   
-         {eventModal}
-         {diaryModal}
-         {karmaScreen}
-       </div>
-     );
-   }
-   
-   /* ═══ CSS ═══ */
-   var CSS = [
-     "@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700;800&display=swap');",
-     "@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }",
-     "@keyframes fadeIn { from{opacity:0} to{opacity:1} }",
-     "@keyframes shake { 0%,100%{transform:translate(0)} 25%{transform:translate(-2px,1px)} 75%{transform:translate(2px,-1px)} }",
-     "@keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.15);opacity:0.7} }",
-     "@keyframes karmaAuraPulse { 0%,100%{transform:scale(1);opacity:0.8} 50%{transform:scale(1.08);opacity:1} }",
-     "body { overscroll-behavior: none; user-select: none; -webkit-user-select: none; background: #000; margin: 0; padding: 0; }",
-     ".cursor { display: inline-block; width: 8px; height: 12px; background: #a64444; animation: blink 1s infinite; margin-left: 4px; vertical-align: middle; }",
-   ].join("\n");
-   
-   /* ═══ STYLES ═══ */
-   var S = {
-     gameContainer: {
-       width: "100%",
-       maxWidth: 420,
-       margin: "0 auto",
-       height: "100dvh",
-       background: "#050505",
-       position: "relative",
-       overflow: "hidden",
-       fontFamily: "'JetBrains Mono', monospace",
-     },
-     introContainer: {
-       width: "100%",
-       height: "100dvh",
-       background: "#000",
-       display: "flex",
-       flexDirection: "column",
-       alignItems: "center",
-       justifyContent: "center",
-       animation: "fadeIn 2s",
-     },
-     introText: {
-       color: "#ccc",
-       fontSize: "14px",
-       letterSpacing: "3px",
-       marginBottom: "30px",
-       textTransform: "uppercase",
-     },
-     introBtn: {
-       background: "transparent",
-       border: "1px solid #333",
-       color: "#666",
-       padding: "10px 20px",
-       fontSize: "10px",
-       cursor: "pointer",
-       letterSpacing: "2px",
-       animation: "fadeIn 1s",
-     },
-     terminalBox: {
-       background: "rgba(0,0,0,0.7)",
-       borderLeft: "2px solid #555",
-       padding: "12px 14px",
-       marginBottom: 20,
-       minHeight: 60,
-       backdropFilter: "blur(4px)",
-       cursor: "pointer",
-     },
-     systemMsg: {
-       textAlign: "center",
-       color: "#666",
-       fontSize: "10px",
-       padding: "10px",
-       letterSpacing: "1px",
-     },
-     crashScreen: {
-       width: "100%",
-       height: "100dvh",
-       background: "#000",
-       display: "flex",
-       alignItems: "center",
-       justifyContent: "center",
-     },
-     crashText: { color: "#0f0", fontFamily: "monospace", fontSize: "14px" },
-     deathScreen: {
-       width: "100%",
-       height: "100dvh",
-       background: "#000",
-       display: "flex",
-       flexDirection: "column",
-       alignItems: "center",
-       justifyContent: "center",
-       animation: "fadeIn 2s",
-     },
-     deathIcon: { color: "#E94560", fontSize: "40px", marginBottom: "20px" },
-     deathText: {
-       color: "#E94560",
-       fontSize: "14px",
-       letterSpacing: "2px",
-       marginBottom: "40px",
-     },
-     winContainer: {
-       width: "100%",
-       maxWidth: 420,
-       margin: "0 auto",
-       height: "100dvh",
-       display: "flex",
-       alignItems: "center",
-       justifyContent: "center",
-       animation: "fadeIn 3s ease-in",
-     },
-     winOverlay: {
-       background: "rgba(255,255,255,0.7)",
-       padding: "40px",
-       borderRadius: "2px",
-       textAlign: "center",
-       backdropFilter: "blur(5px)",
-     },
-     winContent: { color: "#000" },
-     winTitle: {
-       fontSize: "24px",
-       fontWeight: "900",
-       marginBottom: "20px",
-       letterSpacing: "-1px",
-     },
-     winQuote: {
-       fontSize: "12px",
-       fontStyle: "italic",
-       color: "#333",
-       marginBottom: "40px",
-     },
-     rebootBtn: {
-       background: "#000",
-       color: "#fff",
-       border: "none",
-       padding: "15px 30px",
-       fontSize: "12px",
-       cursor: "pointer",
-       fontWeight: "bold",
-     },
-     mainBtn: {
-       width: "100%",
-       padding: "16px",
-       background: "rgba(0,0,0,0.3)",
-       border: "1px solid #a64444",
-       color: "#a64444",
-       fontSize: 12,
-       letterSpacing: 2,
-       cursor: "pointer",
-       textTransform: "uppercase",
-     },
-     rustPulseBtn: {
-       width: "100%",
-       padding: "16px",
-       background: "rgba(166,68,68,0.1)",
-       border: "1px solid #E94560",
-       color: "#E94560",
-       fontSize: 12,
-       letterSpacing: 2,
-       cursor: "pointer",
-       textTransform: "uppercase",
-       animation: "pulse 1s infinite",
-       fontWeight: "bold",
-     },
-     failBtn: {
-       width: "100%",
-       padding: "16px",
-       background: "rgba(233,69,96,0.1)",
-       border: "1px solid #E94560",
-       color: "#E94560",
-       fontSize: 12,
-       letterSpacing: 2,
-       cursor: "pointer",
-       textTransform: "uppercase",
-     },
-     disabledBtn: {
-       width: "100%",
-       padding: "16px",
-       background: "transparent",
-       border: "1px solid #333",
-       color: "#444",
-       fontSize: 12,
-       letterSpacing: 2,
-       cursor: "default",
-     },
-     subBtn: {
-       flex: 1,
-       padding: "12px",
-       background: "rgba(0,0,0,0.3)",
-       border: "1px solid #555",
-       color: "#888",
-       fontSize: 10,
-       cursor: "pointer",
-     },
-     subBtnFull: {
-       width: "100%",
-       padding: "12px",
-       background: "rgba(0,0,0,0.3)",
-       border: "1px solid #555",
-       color: "#888",
-       fontSize: 10,
-       cursor: "pointer",
-     },
-     disabledSubBtn: {
-       flex: 1,
-       padding: "12px",
-       background: "transparent",
-       border: "1px solid #333",
-       color: "#333",
-       fontSize: 10,
-       cursor: "default",
-     },
-     keyBtn: {
-       flex: 1,
-       padding: "12px",
-       background: "rgba(224,192,104,0.1)",
-       border: "1px solid #E0C068",
-       color: "#E0C068",
-       fontSize: 10,
-       cursor: "pointer",
-       fontWeight: "bold",
-     },
-     ghostBtn: {
-       width: "100%",
-       padding: "12px",
-       background: "rgba(100,100,150,0.1)",
-       border: "1px solid #8888aa",
-       color: "#aaaacc",
-       fontSize: 10,
-       cursor: "pointer",
-       fontWeight: "bold",
-     },
-     closeBtn: {
-       background: "transparent",
-       border: "1px solid #444",
-       color: "#666",
-       padding: "10px 20px",
-       fontSize: 10,
-       cursor: "pointer",
-       letterSpacing: 1,
-     },
-     eventOverlay: {
-       position: "fixed",
-       top: 0,
-       left: 0,
-       right: 0,
-       bottom: 0,
-       background: "rgba(0,0,0,0.85)",
-       zIndex: 9000,
-       display: "flex",
-       alignItems: "center",
-       justifyContent: "center",
-       animation: "fadeIn 0.3s",
-     },
-     eventBox: {
-       background: "#111",
-       border: "1px solid #333",
-       padding: 24,
-       maxWidth: 340,
-       width: "90%",
-       borderRadius: 4,
-     },
-     eventTitle: {
-       fontSize: 14,
-       fontWeight: "bold",
-       color: "#E0C068",
-       letterSpacing: 2,
-       marginBottom: 12,
-       textTransform: "uppercase",
-     },
-     eventDesc: { fontSize: 11, color: "#aaa", lineHeight: 1.6, marginBottom: 20 },
-     karmaScreenBox: {
-       background: "#0a0a0a",
-       border: "1px solid #333",
-       padding: 30,
-       maxWidth: 360,
-       width: "90%",
-       borderRadius: 4,
-       position: "relative",
-       overflow: "hidden",
-     },
-     diaryBox: {
-       background: "#0a0a0a",
-       border: "1px solid #333",
-       padding: 24,
-       maxWidth: 380,
-       width: "90%",
-       borderRadius: 4,
-       maxHeight: "80vh",
-       overflowY: "auto",
-     },
-     bottomNav: {
-       display: "flex",
-       justifyContent: "space-around",
-       borderTop: "1px solid #222",
-       paddingTop: 8,
-       paddingBottom: 12,
-     },
-     bottomNavBtn: {
-       background: "transparent",
-       border: "none",
-       color: "#555",
-       display: "flex",
-       flexDirection: "column",
-       alignItems: "center",
-       gap: 2,
-       cursor: "pointer",
-       padding: "4px 12px",
-     },
-     devPanel: {
-       position: "absolute",
-       top: 0,
-       left: 0,
-       right: 0,
-       zIndex: 9999,
-       background: "rgba(0,50,0,0.9)",
-       borderBottom: "1px solid #0f0",
-       padding: "8px",
-       display: "flex",
-       gap: "5px",
-       alignItems: "center",
-     },
-     devInput: {
-       width: "40px",
-       background: "#000",
-       color: "#0f0",
-       border: "1px solid #0f0",
-       fontSize: "10px",
-     },
-     devBtn: {
-       background: "#002200",
-       color: "#0f0",
-       border: "1px solid #0f0",
-       fontSize: "10px",
-       cursor: "pointer",
-     },
-   };
-   export default App;
+// --- DATA ---
+const RELICS_DB = [
+  {
+    id: "watch",
+    icon: "🕰️",
+    name: "ЗАСТЫВШИЕ ЧАСЫ",
+    effect: "ШАНС РИСКА +1",
+    lore: "Стрелки замерли. Время — иллюзия.",
+    bonus: { extraRisk: 1 },
+  },
+  {
+    id: "skull",
+    icon: "💀",
+    name: "КЛЮЧ ЧЕРЕПА",
+    effect: "ТАЙНЫ БАШНИ",
+    lore: "Шепчет коды доступа.",
+    bonus: { secretDoor: 100 },
+  },
+  {
+    id: "photo",
+    icon: "📷",
+    name: "СТАРОЕ ФОТО",
+    effect: "ЭНЕРГИЯ +10%",
+    lore: "Ты чувствуешь тепло от снимка.",
+    bonus: { maxEnergy: 1.1 },
+  },
+  {
+    id: "compass",
+    icon: "🧭",
+    name: "КОМПАС ТЕНЕЙ",
+    effect: "ВИДИТ СКРЫТОЕ",
+    lore: "Указывает на сбои в реальности.",
+    bonus: { revealHidden: true },
+  },
+  {
+    id: "scroll",
+    icon: "📜",
+    name: "ЧЕРТЕЖИ ЭРНИ",
+    effect: "РАСХОД -5",
+    lore: "Схемы вентиляции лифта.",
+    bonus: { costReduc: 5 },
+  },
+  {
+    id: "chain",
+    icon: "⛓️",
+    name: "РЖАВАЯ ЦЕПЬ",
+    effect: "ЗАЩИТА +10",
+    lore: "Связывает тебя с миром.",
+    bonus: { defense: 10 },
+  },
+];
+
+const KEYS = {
+  silence: {
+    id: "silence",
+    name: "КЛЮЧ ТИШИНЫ",
+    desc: "Эрни молчит (3 эт).",
+    icon: "🔇",
+  },
+  mirror: {
+    id: "mirror",
+    name: "КЛЮЧ ЗЕРКАЛА",
+    desc: "Чтение мыслей.",
+    icon: "🪞",
+  },
+  insight: {
+    id: "insight",
+    name: "КЛЮЧ ПРОЗРЕНИЯ",
+    desc: "Визор состояния.",
+    icon: "👁",
+  },
+  architect: {
+    id: "architect",
+    name: "КЛЮЧ АРХИТЕКТОРА",
+    desc: "Апгрейд лифта.",
+    icon: "📐",
+  },
+};
+
+function useTypewriter(fullText, speed = 35) {
+  const [displayed, setDisplayed] = useState("");
+  const [done, setDone] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    setDisplayed("");
+    setDone(false);
+    let i = 0;
+    clearInterval(ref.current);
+    if (!fullText) return;
+    ref.current = setInterval(() => {
+      i++;
+      setDisplayed(fullText.slice(0, i));
+      if (i >= fullText.length) {
+        clearInterval(ref.current);
+        setTimeout(() => setDone(true), 300);
+      }
+    }, speed);
+    return () => clearInterval(ref.current);
+  }, [fullText, speed]);
+  return { displayed, done };
+}
+
+function EnergyPulse({ energy, max, karma }) {
+  const pct = Math.max(0, Math.min(1, energy / max));
+  let color = pct < 0.2 ? "#FF0000" : pct < 0.5 ? "#E94560" : "#666";
+  if (karma > 30) color = "#4a8a4a"; // Green for good karma
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ fontSize: 11, color }}>⚡</span>
+      <div
+        style={{
+          width: 80,
+          height: 6,
+          background: "rgba(255,255,255,0.1)",
+          borderRadius: 3,
+        }}
+      >
+        <div
+          style={{
+            width: `${pct * 100}%`,
+            height: "100%",
+            background: color,
+            transition: "width 0.6s ease",
+            borderRadius: 3,
+          }}
+        />
+      </div>
+      <span style={{ fontSize: 10, color: "#888" }}>{Math.floor(energy)}</span>
+    </div>
+  );
+}
+
+export default function ErnieGame() {
+  // --- STATE ---
+  const [floor, setFloor] = useState(
+    () => Number(localStorage.getItem("ernie_floor")) || 1
+  );
+  const [energy, setEnergy] = useState(
+    () => Number(localStorage.getItem("ernie_energy")) || 100
+  );
+  const [relics, setRelics] = useState(
+    () => JSON.parse(localStorage.getItem("ernie_relics")) || []
+  );
+  const [inventory, setInventory] = useState(
+    () => JSON.parse(localStorage.getItem("ernie_inventory")) || ["silence"]
+  );
+  const [karma, setKarma] = useState(
+    () => Number(localStorage.getItem("ernie_karma")) || 0
+  );
+  const [riskUsedThisCycle, setRiskUsedThisCycle] = useState(
+    () => Number(localStorage.getItem("ernie_risk_cycle")) || 0
+  );
+
+  // UI State
+  const [phase, setPhase] = useState("floor");
+  const [currentText, setCurrentText] = useState("");
+
+  // Modals
+  const [showRelics, setShowRelics] = useState(false);
+  const [showBag, setShowBag] = useState(false);
+  const [showDiary, setShowDiary] = useState(false);
+  const [showKarmaView, setShowKarmaView] = useState(false);
+  const [showFloors, setShowFloors] = useState(false);
+
+  const [selectedRelicInfo, setSelectedRelicInfo] = useState(null);
+  const [sosLoading, setSosLoading] = useState(false);
+  const [trialResult, setTrialResult] = useState(null);
+  const [fxFlash, setFxFlash] = useState(null);
+
+  const scrollRef = useRef(null);
+  const { displayed, done } = useTypewriter(
+    currentText,
+    phase === "ascending" ? 80 : 35
+  );
+
+  const getZone = (f) => {
+    if (f <= 10) return { img: "CABIN" };
+    if (f <= 20) return { img: "LAB" };
+    if (f <= 30) return { img: "LOFT" };
+    if (f <= 40) return { img: "GARDEN" };
+    return { img: "OFFICE" };
+  };
+
+  // --- STATS ---
+  let maxEnergyMult = 1;
+  let costReduction = 0;
+  let maxRiskPerCycle = 2;
+  relics.forEach((rid) => {
+    const r = RELICS_DB.find((x) => x.id === rid);
+    if (r?.bonus?.maxEnergy) maxEnergyMult *= r.bonus.maxEnergy;
+    if (r?.bonus?.costReduc) costReduction += r.bonus.costReduc;
+    if (r?.bonus?.extraRisk) maxRiskPerCycle += r.bonus.extraRisk;
+  });
+
+  const max = Math.floor(
+    (floor <= 10 ? 100 : floor <= 30 ? 140 : 220) * maxEnergyMult
+  );
+  const cost = Math.max(
+    10,
+    (floor <= 10 ? 30 : floor <= 30 ? 45 : 65) - costReduction
+  );
+  const canAscend = energy >= cost && phase !== "emergency";
+  const canRisk = energy >= 20 && riskUsedThisCycle < maxRiskPerCycle;
+
+  // --- ACTIONS ---
+  const triggerFlash = (type) => {
+    setFxFlash(type);
+    setTimeout(() => setFxFlash(null), 300);
+  };
+
+  const useKey = (keyId) => {
+    setInventory((prev) => {
+      const idx = prev.indexOf(keyId);
+      if (idx > -1) {
+        const n = [...prev];
+        n.splice(idx, 1);
+        return n;
+      }
+      return prev;
+    });
+    setTrialResult(`ИСПОЛЬЗОВАНО: ${KEYS[keyId]?.name || keyId}`);
+    setShowBag(false);
+  };
+
+  const handleRisk = () => {
+    if (!canRisk) return;
+    setEnergy((e) => Math.max(0, e - 20));
+    setRiskUsedThisCycle((c) => c + 1);
+    if (Math.random() > 0.5) {
+      setEnergy((e) => Math.min(e + 45, max));
+      setTrialResult("УДАЧА! +45");
+      triggerFlash("green");
+    } else {
+      setTrialResult("ПУСТОТА...");
+      triggerFlash("red");
+    }
+  };
+
+  const ascend = () => {
+    if (!canAscend) return;
+    setPhase("ascending");
+    setEnergy((e) => e - cost);
+    setTrialResult(null);
+    setRiskUsedThisCycle(0);
+    setTimeout(() => {
+      setFloor((f) => Math.min(f + 1, 50));
+      setPhase("floor");
+    }, 2000);
+  };
+
+  const handleDescent = () => {
+    setFloor((f) => Math.max(1, f - 5));
+    setEnergy(30);
+    setPhase("floor");
+    setTrialResult("АВАРИЙНЫЙ СПУСК.");
+  };
+  const handleSOS = () => {
+    setSosLoading(true);
+    setTimeout(() => {
+      setFloor((f) => Math.max(1, f - 5));
+      setEnergy(100);
+      setPhase("floor");
+      setSosLoading(false);
+    }, 2000);
+  };
+
+  // --- DEBUG TOOLS ---
+  const debugAddAllRelics = () => setRelics(RELICS_DB.map((r) => r.id));
+  const debugAddKey = () => setInventory((p) => [...p, "mirror"]);
+
+  // --- EFFECTS ---
+  useEffect(() => {
+    if (energy <= 0 && phase !== "emergency") {
+      setPhase("emergency");
+      triggerFlash("red");
+    }
+  }, [energy, phase]);
+
+  useEffect(() => {
+    localStorage.setItem("ernie_floor", floor);
+    localStorage.setItem("ernie_energy", energy);
+    localStorage.setItem("ernie_relics", JSON.stringify(relics));
+    localStorage.setItem("ernie_inventory", JSON.stringify(inventory));
+    localStorage.setItem("ernie_risk_cycle", riskUsedThisCycle);
+  }, [floor, energy, relics, inventory, riskUsedThisCycle]);
+
+  useEffect(() => {
+    let txt =
+      phase === "emergency"
+        ? "СБОЙ СИСТЕМЫ. ЭНЕРГИЯ 0."
+        : trialResult ||
+          (floor === 1 ? "Этаж 0. Лифт ждет." : "Ты слышишь гул механизмов.");
+    setCurrentText(txt);
+  }, [floor, trialResult, phase]);
+
+  useEffect(() => {
+    if (showFloors && scrollRef.current)
+      scrollRef.current.scrollTo({
+        top: (50 - floor) * 30 - 100,
+        behavior: "auto",
+      });
+  }, [showFloors, floor]);
+
+  return (
+    <div style={{ ...S.gameContainer, background: "#000" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
+        body { background: #000; font-family: 'JetBrains Mono', monospace; user-select: none; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        @keyframes glow { 0%, 100% { box-shadow: inset 0 0 5px #ffd700; } 50% { box-shadow: inset 0 0 15px #ffd700; } }
+      `}</style>
+
+      {/* BACKGROUND */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `url(${IMG[getZone(floor).img]})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          filter: "brightness(0.4)",
+          zIndex: 1,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 999,
+          background:
+            fxFlash === "red"
+              ? "rgba(255,0,0,0.2)"
+              : fxFlash === "green"
+              ? "rgba(0,255,0,0.1)"
+              : "transparent",
+        }}
+      />
+
+      {/* HUD */}
+      <div
+        style={{
+          position: "absolute",
+          top: 20,
+          left: 20,
+          right: 20,
+          zIndex: 40,
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <EnergyPulse energy={energy} max={max} karma={karma} />
+        <div onClick={() => setShowFloors(true)} style={S.floorText}>
+          {floor}
+          <div style={{ fontSize: 9, letterSpacing: 2 }}>ЭТАЖ</div>
+        </div>
+      </div>
+
+      {/* EMERGENCY */}
+      {phase === "emergency" && (
+        <div style={S.overlay}>
+          <div style={S.box}>
+            <div style={{ color: "red", marginBottom: 15 }}>
+              КРИТИЧЕСКИЙ СБОЙ
+            </div>
+            <button onClick={handleDescent} style={S.mainBtn}>
+              СПУСК (-5 эт, +30 эн)
+            </button>
+            <button
+              onClick={handleSOS}
+              style={{ ...S.mainBtn, marginTop: 10, background: "#00aa44" }}
+            >
+              {sosLoading ? "..." : "SOS (+100 эн)"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: СУМКА (СТАРЫЙ ДИЗАЙН) */}
+      {showBag && (
+        <div style={S.overlay} onClick={() => setShowBag(false)}>
+          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
+            <div
+              style={{ marginBottom: 20, color: "#E94560", letterSpacing: 2 }}
+            >
+              СУМКА
+            </div>
+            {inventory.length === 0 && (
+              <div style={{ color: "#666" }}>Пусто...</div>
+            )}
+            {inventory.map((k, i) => {
+              const kData = KEYS[k] || { name: k, desc: "Предмет" };
+              return (
+                <button key={i} onClick={() => useKey(k)} style={S.keyItemBtn}>
+                  <div>
+                    {kData.icon} {kData.name}
+                  </div>
+                  <div style={{ fontSize: 9, color: "#888" }}>{kData.desc}</div>
+                </button>
+              );
+            })}
+            <button onClick={() => setShowBag(false)} style={S.closeBagBtn}>
+              ЗАКРЫТЬ
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ДНЕВНИК (СТАРЫЙ ДИЗАЙН С ЗАМКАМИ) */}
+      {showDiary && (
+        <div style={S.overlay} onClick={() => setShowDiary(false)}>
+          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 20, color: "#E0C068" }}>📖 ДНЕВНИК</div>
+            <div style={S.diaryGrid}>
+              {[5, 10, 15, 20, 25, 30].map((f) => (
+                <div key={f} style={S.diaryCard}>
+                  <div style={{ fontSize: 24 }}>{floor >= f ? "🔓" : "🔒"}</div>
+                  <div style={{ fontSize: 10, color: "#666" }}>???</div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowDiary(false)} style={S.closeBagBtn}>
+              ЗАКРЫТЬ
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: КАРМА (СТАРЫЙ КРУГЛЫЙ ДИЗАЙН) */}
+      {showKarmaView && (
+        <div style={S.overlay} onClick={() => setShowKarmaView(false)}>
+          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 20, color: "#E0C068" }}>ТВОЙ ПУТЬ</div>
+            <div style={S.karmaCircle}>
+              <div
+                style={{
+                  ...S.karmaNeedle,
+                  transform: `translate(-50%, -100%) rotate(${karma * 1.8}deg)`,
+                }}
+              />
+            </div>
+            <div
+              style={{
+                marginTop: 15,
+                color: karma > 0 ? "#4a8a4a" : karma < 0 ? "#8a3a6a" : "#ccc",
+              }}
+            >
+              {karma > 0 ? "СВЕТ" : karma < 0 ? "ТЬМА" : "РАВНОВЕСИЕ"}
+            </div>
+            <button
+              onClick={() => setShowKarmaView(false)}
+              style={S.closeBagBtn}
+            >
+              ЗАКРЫТЬ
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: РЕЛИКВИИ (НОВЫЙ КРАСИВЫЙ ДИЗАЙН) */}
+      {showRelics && (
+        <div style={S.overlay} onClick={() => setShowRelics(false)}>
+          <div style={S.relicsContainer} onClick={(e) => e.stopPropagation()}>
+            <div style={S.relicsGrid}>
+              {RELICS_DB.map((r) => {
+                const has = relics.includes(r.id);
+                return (
+                  <div
+                    key={r.id}
+                    onClick={() => has && setSelectedRelicInfo(r)}
+                    style={{
+                      ...S.slot,
+                      opacity: has ? 1 : 0.1,
+                      animation:
+                        has && selectedRelicInfo?.id === r.id
+                          ? "glow 2s infinite"
+                          : "none",
+                    }}
+                  >
+                    {has && <span>{r.icon}</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={S.relicsTextLayout}>
+              <div style={S.panelTitle}>
+                {selectedRelicInfo ? selectedRelicInfo.name : "ВЫБЕРИ ПРЕДМЕТ"}
+              </div>
+              <div style={S.panelEffect}>
+                {selectedRelicInfo ? selectedRelicInfo.effect : "..."}
+              </div>
+              <div style={S.panelLore}>
+                {selectedRelicInfo
+                  ? selectedRelicInfo.lore
+                  : "Предметы хранят память."}
+              </div>
+            </div>
+            <button onClick={() => setShowRelics(false)} style={S.closeBtn}>
+              ЗАКРЫТЬ
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: КАРТА (СТАРЫЙ СТАТИЧНЫЙ ФОН) */}
+      {showFloors && (
+        <div style={S.overlay} onClick={() => setShowFloors(false)}>
+          <div style={S.mapWrapper}>
+            {/* Картинка одна на весь скролл, зафиксирована */}
+            <div style={S.mapBg} />
+            <div className="hide-scroll" ref={scrollRef} style={S.mapScroll}>
+              {[...Array(50)].map((_, i) => {
+                const f = 50 - i;
+                const isC = floor === f;
+                return (
+                  <div
+                    key={f}
+                    style={{
+                      ...S.floorCell,
+                      color: isC ? "#ffd700" : "#b8860b",
+                      opacity: isC ? 1 : 0.4,
+                      textShadow: isC ? "0 0 10px #ffd700" : "none",
+                    }}
+                  >
+                    {f}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOTTOM UI (ВОЗВРАЩЕНЫ ВСЕ КНОПКИ) */}
+      <div style={S.bottomUI}>
+        <div style={S.terminal}>
+          <div style={{ color: "#E94560", fontSize: 8, fontWeight: "bold" }}>
+            ERNIE
+          </div>
+          <div style={{ color: "#ccc", fontSize: 12 }}>{displayed}</div>
+        </div>
+
+        {done && phase === "floor" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* DEBUG LINE */}
+            <div
+              style={{
+                display: "flex",
+                gap: 5,
+                justifyContent: "flex-end",
+                opacity: 0.5,
+              }}
+            >
+              <button
+                onClick={debugAddAllRelics}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#444",
+                  fontSize: 8,
+                }}
+              >
+                DEBUG: ALL
+              </button>
+              <button
+                onClick={debugAddKey}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#444",
+                  fontSize: 8,
+                }}
+              >
+                +KEY
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowBag(true)} style={S.bagBtn}>
+                СУМКА [{inventory.length}]
+              </button>
+              <button onClick={() => setShowRelics(true)} style={S.bagBtn}>
+                РЕЛИКВИИ
+              </button>
+              <button onClick={() => setShowDiary(true)} style={S.bagBtn}>
+                ДНЕВНИК
+              </button>
+              <button onClick={() => setShowKarmaView(true)} style={S.bagBtn}>
+                КАРМА
+              </button>
+            </div>
+
+            <button
+              onClick={ascend}
+              disabled={!canAscend}
+              style={canAscend ? S.mainBtn : S.disBtn}
+            >
+              ▲ ПОДЪЁМ
+            </button>
+            <button
+              onClick={handleRisk}
+              disabled={!canRisk}
+              style={canRisk ? S.subBtn : S.disSub}
+            >
+              РИСК ({riskUsedThisCycle}/{maxRiskPerCycle})
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// STYLES
+const S = {
+  gameContainer: {
+    width: "100%",
+    maxWidth: 420,
+    margin: "0 auto",
+    height: "100dvh",
+    position: "relative",
+    overflow: "hidden",
+  },
+  floorText: {
+    textAlign: "right",
+    color: "#e0e0e0",
+    fontSize: 32,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  overlay: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(0,0,0,0.95)",
+    zIndex: 100,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  box: {
+    width: "80%",
+    background: "#111",
+    padding: 20,
+    border: "1px solid #444",
+    textAlign: "center",
+  },
+
+  // BAG & MODALS
+  bagContent: {
+    width: "85%",
+    background: "#1a1a1a",
+    border: "1px solid #444",
+    borderRadius: 8,
+    padding: 20,
+    textAlign: "center",
+    color: "#fff",
+  },
+  keyItemBtn: {
+    width: "100%",
+    padding: "12px",
+    background: "#222",
+    border: "1px solid #444",
+    color: "#ccc",
+    marginBottom: "8px",
+    textAlign: "left",
+    cursor: "pointer",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  closeBagBtn: {
+    marginTop: "20px",
+    background: "transparent",
+    border: "1px solid #444",
+    color: "#888",
+    cursor: "pointer",
+    fontSize: 10,
+    padding: "8px 20px",
+  },
+
+  // DIARY GRID
+  diaryGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 10,
+  },
+  diaryCard: {
+    aspectRatio: "1",
+    background: "#222",
+    border: "1px solid #333",
+    borderRadius: 4,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // KARMA CIRCLE
+  karmaCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: "50%",
+    border: "2px solid #444",
+    margin: "0 auto",
+    position: "relative",
+    background: "radial-gradient(#222, #000)",
+  },
+  karmaNeedle: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 2,
+    height: 40,
+    background: "#E94560",
+    transformOrigin: "center bottom",
+    transition: "transform 0.5s ease",
+  },
+
+  // BOTTOM UI
+  bottomUI: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: "20px",
+    background: "linear-gradient(to top, #000, transparent)",
+    zIndex: 50,
+  },
+  terminal: {
+    background: "rgba(0,0,0,0.7)",
+    padding: 12,
+    borderLeft: "2px solid #555",
+    marginBottom: 15,
+  },
+  mainBtn: {
+    width: "100%",
+    padding: 16,
+    background: "transparent",
+    border: "1px solid #a64444",
+    color: "#a64444",
+    fontWeight: "bold",
+  },
+  disBtn: {
+    width: "100%",
+    padding: 16,
+    border: "1px solid #333",
+    color: "#333",
+  },
+  subBtn: {
+    width: "100%",
+    padding: 10,
+    background: "transparent",
+    border: "1px solid #555",
+    color: "#999",
+    fontSize: 10,
+  },
+  disSub: {
+    width: "100%",
+    padding: 10,
+    border: "1px solid #222",
+    color: "#222",
+    fontSize: 10,
+  },
+  bagBtn: {
+    flex: 1,
+    padding: 8,
+    background: "transparent",
+    border: "1px solid #444",
+    color: "#666",
+    fontSize: 9,
+    cursor: "pointer",
+  },
+
+  // RELICS (NEW DESIGN)
+  relicsContainer: {
+    width: "90%",
+    aspectRatio: "9/16",
+    backgroundImage: `url(${IMG.RELICS_BG})`,
+    backgroundSize: "100% 100%",
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+  },
+  relicsGrid: {
+    position: "absolute",
+    top: "16%",
+    left: "12%",
+    right: "12%",
+    height: "35%",
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr",
+    gridTemplateRows: "1fr 1fr",
+    gap: "10px",
+  },
+  slot: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 24,
+    borderRadius: 8,
+    transition: "0.3s",
+  },
+  relicsTextLayout: {
+    position: "absolute",
+    bottom: "10%",
+    left: "15%",
+    right: "15%",
+    height: "30%",
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+  },
+  panelTitle: {
+    height: "20%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#E0C068",
+    fontSize: 13,
+    fontWeight: "bold",
+    textTransform: "uppercase",
+  },
+  panelEffect: {
+    height: "15%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    fontSize: 10,
+  },
+  panelLore: {
+    height: "45%",
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    color: "#888",
+    fontSize: 9,
+    fontStyle: "italic",
+    textAlign: "center",
+    paddingTop: "5px",
+  },
+  closeBtn: {
+    position: "absolute",
+    bottom: "3%",
+    left: "50%",
+    transform: "translateX(-50%)",
+    color: "#444",
+    border: "none",
+    background: "none",
+    fontSize: 10,
+    letterSpacing: 2,
+  },
+
+  // TOWER MAP (OLD STATIC DESIGN)
+  mapWrapper: {
+    width: "220px",
+    height: "70vh",
+    position: "relative",
+    border: "1px solid #333",
+    overflow: "hidden",
+  },
+  // Одна картинка на весь фон, не повторяется (no-repeat), фиксирована по центру
+  mapBg: {
+    position: "absolute",
+    inset: 0,
+    backgroundImage: `url(${IMG.TOWER_BG})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    filter: "brightness(0.3)",
+  },
+  mapScroll: {
+    position: "absolute",
+    inset: 0,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    padding: "40px 0",
+  },
+  floorCell: {
+    height: 30,
+    fontSize: 20,
+    display: "flex",
+    alignItems: "center",
+    fontWeight: "bold",
+  },
+};
