@@ -1,0 +1,204 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+
+/* ══════════════════════════════════════════
+   ERNIE v200.0 — THE AWAKENING
+   Base: v125.0
+   Upgraded:
+   1. 🎬 60-Second Intro (Brain Breaker)
+   2. 🧠 ERNIE 4 Moods (mock/cold/playful/philosophical)
+   3. ⚖️ Karma affects WORLD (enemies, timer, visuals)
+   4. 🧩 25 Riddles (logic, paradox, moral, meta)
+   5. 📱 Clean UI (minimalism)
+   6. 💀 Death Screen with wall message
+   7. 🏆 15 Achievements
+   ══════════════════════════════════════════ */
+
+// ─── IMAGES ───
+const IMG = {
+  CABIN: "https://raw.githubusercontent.com/akbole/ernie-warden/main/elevator.jpg",
+  LAB: "https://raw.githubusercontent.com/akbole/ernie-warden/main/lab.jpg",
+  LOFT: "https://raw.githubusercontent.com/akbole/ernie-warden/main/loft.jpg",
+  GARDEN: "https://raw.githubusercontent.com/akbole/ernie-warden/main/garden.jpg",
+  OFFICE: "https://raw.githubusercontent.com/akbole/ernie-warden/main/office.jpg",
+  TOWER_BG: "https://raw.githubusercontent.com/akbole/ernie-warden/main/tower_bg.png",
+  RELICS_BG: "https://raw.githubusercontent.com/akbole/ernie-warden/main/relics_final.jpg",
+  GHOST_GIF: "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3ZtYXg5a3ZtYXg5a3ZtYXg5ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L2QlXqYkYVjJ6/giphy.gif",
+  BOSS_BG: "https://media.giphy.com/media/26tn33aiTi1jkl6H6/giphy.gif",
+  CORE_BG: "https://media.giphy.com/media/3o7TKs7qQ4Z9dC1hXq/giphy.gif",
+};
+
+// ─── AUDIO ───
+let isMuted = false;
+const playSound = (type) => {
+  if (typeof window === "undefined" || isMuted) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+    if (type === "click") { osc.type = "triangle"; osc.frequency.setValueAtTime(300, now); gain.gain.setValueAtTime(0.05, now); osc.start(now); osc.stop(now + 0.05); }
+    else if (type === "buy") { osc.type = "sine"; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1); gain.gain.setValueAtTime(0.05, now); osc.start(now); osc.stop(now + 0.2); }
+    else if (type === "boom") { osc.type = "sawtooth"; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(10, now + 0.3); gain.gain.setValueAtTime(0.2, now); osc.start(now); osc.stop(now + 0.3); }
+    else if (type === "alarm") { osc.type = "square"; osc.frequency.setValueAtTime(150, now); gain.gain.setValueAtTime(0.05, now); osc.start(now); osc.stop(now + 0.5); }
+    else if (type === "quest") { osc.type = "sine"; osc.frequency.setValueAtTime(400, now); osc.frequency.linearRampToValueAtTime(800, now + 0.2); gain.gain.setValueAtTime(0.1, now); osc.start(now); osc.stop(now + 0.4); }
+    else if (type === "phone") { osc.type = "square"; osc.frequency.setValueAtTime(800, now); osc.frequency.setValueAtTime(0, now + 0.1); osc.frequency.setValueAtTime(800, now + 0.2); gain.gain.setValueAtTime(0.1, now); osc.start(now); osc.stop(now + 0.4); }
+    else if (type === "ernie") { osc.type = "sawtooth"; osc.frequency.setValueAtTime(120, now); gain.gain.setValueAtTime(0.05, now); osc.start(now); osc.stop(now + 0.4); }
+    else if (type === "success") { osc.type = "sine"; osc.frequency.setValueAtTime(500, now); gain.gain.setValueAtTime(0.1, now); osc.start(now); osc.stop(now + 0.2); }
+    else if (type === "error") { osc.type = "sawtooth"; osc.frequency.setValueAtTime(80, now); gain.gain.setValueAtTime(0.1, now); osc.start(now); osc.stop(now + 0.3); }
+    else if (type === "glitch") { osc.type = "sawtooth"; osc.frequency.setValueAtTime(40, now); osc.frequency.linearRampToValueAtTime(200, now + 0.1); osc.frequency.linearRampToValueAtTime(20, now + 0.2); gain.gain.setValueAtTime(0.15, now); osc.start(now); osc.stop(now + 0.25); }
+    else if (type === "heartbeat") { osc.type = "sine"; osc.frequency.setValueAtTime(60, now); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.3); osc.start(now); osc.stop(now + 0.3); }
+  } catch (e) {}
+};
+
+// ─── ERNIE MOOD SYSTEM ───
+const MOODS = { MOCK: "mock", COLD: "cold", PLAYFUL: "playful", PHILOSOPHICAL: "philosophical" };
+const MOOD_COLORS = { mock: "#FFD700", cold: "#CCCCCC", playful: "#00FFFF", philosophical: "#AA88FF" };
+
+function calculateMood(karma, consecutiveErrors, deaths, floor, fastAnswers) {
+  if (floor >= 35 && karma > 20) return MOODS.PHILOSOPHICAL;
+  if (karma < -20 || deaths > 5) return MOODS.COLD;
+  if (consecutiveErrors >= 2) return MOODS.MOCK;
+  if (fastAnswers >= 3 || (floor > 10 && consecutiveErrors === 0)) return MOODS.PLAYFUL;
+  return MOODS.PLAYFUL;
+}
+
+function getErnieFloorPhrase(floor, mood, karma, deaths, echoFloor) {
+  // Специальные этажи
+  if (floor === 13) return "Этаж 13. Суеверный?";
+  if (floor === 37) return "Этаж 37. ...Ты ведь помнишь, да?";
+  if (floor === 49) return "Предпоследний. Оглянись назад.";
+  if (floor === 50) return "...";
+  
+  // Память о прошлых смертях
+  if (deaths > 0 && Math.random() < 0.25) {
+    const dp = [
+      `Попытка ${deaths + 1}. Я впечатлён. Твоим упрямством.`,
+      `Ты уже умирал ${deaths} раз. Но кто считает.`,
+      `${deaths} смертей. И ты всё ещё здесь. Интересно.`,
+    ];
+    return dp[Math.floor(Math.random() * dp.length)];
+  }
+  
+  // Эхо прошлой сессии
+  if (floor === 1 && echoFloor > 0 && Math.random() < 0.7) {
+    return `Опять ты? В прошлый раз ты застрял на ${echoFloor} этаже.`;
+  }
+
+  const phrases = {
+    mock: [
+      "Ещё один этаж. Ты прям герой.",
+      "О, ты ещё жив? Неожиданно.",
+      "Продолжай. Мне нравится наблюдать.",
+      `Этаж ${floor}. Аплодисменты? Нет? Ладно.`,
+      "Ты поднимаешься так уверенно. Это пугает.",
+    ],
+    cold: [
+      `Этаж ${floor}.`,
+      "...",
+      "Продолжай.",
+      "Дальше.",
+      `Этаж ${floor}. Не останавливайся.`,
+    ],
+    playful: [
+      `Этаж ${floor}! Ты продержался дольше чем 73% субъектов.`,
+      "Может ты не так безнадёжен.",
+      `Этаж ${floor}. Я почти впечатлён. Почти.`,
+      "Мне начинает нравиться за тобой наблюдать.",
+      "Неплохой темп. Для человека.",
+    ],
+    philosophical: [
+      `Этаж ${floor}. Каждый этаж — это выбор. Ты выбрал подняться.`,
+      "Ты когда-нибудь думал... зачем ты поднимаешься?",
+      "Наверху ничего нет. Ты это знаешь, правда?",
+      "Может Башня — не испытание. Может это зеркало.",
+      `Этаж ${floor}. Мы оба здесь. Но по разным причинам.`,
+    ],
+  };
+  const list = phrases[mood] || phrases.playful;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function getCorrectPhrase(mood) {
+  const p = {
+    mock: ["Повезло.", "Даже слепая белка находит орех.", "Хм. Ладно."],
+    cold: ["Верно.", "Дальше.", "..."],
+    playful: ["О! Удивлён. Почти горжусь.", "Правильно!", "Неплохо!"],
+    philosophical: ["Верно. Хотя истина — понятие гибкое.", "Ты ответил. Но понял ли?", "Правильный ответ. Но что делает его правильным?"],
+  };
+  const list = p[mood] || p.playful;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function getWrongPhrase(mood, consErrors) {
+  if (consErrors >= 3) return "Ты точно читаешь? Или просто жмёшь кнопки?";
+  const p = {
+    mock: ["Нет. Просто нет.", "Серьёзно?", "Ты разочаровываешь."],
+    cold: ["Неверно.", "Нет.", "...Нет."],
+    playful: ["Мимо!", "Неа. Попробуй подумать.", "Ошибка. Бывает."],
+    philosophical: ["Неверно. Но ошибка — тоже ответ.", "Нет. Впрочем, что есть 'нет'?", "Неправильно. Но ты узнал что-то о себе."],
+  };
+  const list = p[mood] || p.playful;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function getDeathPhrase(mood, deaths) {
+  if (deaths === 0) return "Первая смерть. Не последняя.";
+  if (deaths >= 5) return "...Я устал считать.";
+  const p = {
+    mock: ["О. Ну. Бывает. С некоторыми — чаще.", "Может попробуешь другую игру?"],
+    cold: ["...", "Снова."],
+    playful: ["Не грусти. Статистически ты когда-нибудь пройдёшь.", "Упс. Давай ещё раз?"],
+    philosophical: ["Смерть — перезагрузка. Вопрос: ты тот же?", "Конец. Или начало."],
+  };
+  const list = p[mood] || p.playful;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+// ─── KARMA SYSTEM ───
+function getKarmaModifiers(karma) {
+  if (karma >= 30) return { enemyHpMult: 0.85, enemyDmgMult: 0.9, timerBonus: 2, riskBonus: 0.05, crtIntensity: 0.3, ernieLies: false, overlay: "light" };
+  if (karma <= -30) return { enemyHpMult: 1.2, enemyDmgMult: 1.1, timerBonus: -2, riskBonus: 0, crtIntensity: 0.8, ernieLies: Math.random() < 0.15, overlay: "dark" };
+  return { enemyHpMult: 1, enemyDmgMult: 1, timerBonus: 0, riskBonus: 0, crtIntensity: 0.5, ernieLies: false, overlay: "neutral" };
+}
+
+// ─── 25 RIDDLES ───
+const RIDDLES = {
+  3: { q: "Меня создали чтобы запирать, но я ничего не запираю. Что я?", opts: [{ text: "Замок", correct: false }, { text: "Обещание", correct: true }, { text: "Код", correct: false }], win: "Философ на третьем этаже. Редкость.", fail: "Нет.", karmaWin: 5, karmaFail: -3 },
+  5: { q: "Я не живой, но решаю кто выживет. Я везде, но у меня нет тела.", opts: [{ text: "Призрак", correct: false }, { text: "ЭРНИ", correct: true }, { text: "Лифтер", correct: false }], win: "ДОСТУП РАЗРЕШЕН.", fail: "ОШИБКА ИДЕНТИФИКАЦИИ.", karmaWin: 5, karmaFail: -5 },
+  7: { q: "Чем больше из меня берёшь, тем больше я становлюсь.", opts: [{ text: "Долг", correct: false }, { text: "Яма", correct: true }, { text: "Знание", correct: false }], win: "Правильно. Копай глубже.", fail: "Мимо.", karmaWin: 3, karmaFail: -2 },
+  10: { q: "У меня есть города, но нет домов. Леса, но нет деревьев.", opts: [{ text: "Симуляция", correct: false }, { text: "Карта", correct: true }, { text: "Сон", correct: false }], win: "Ты видишь дальше чем кажется.", fail: "Слишком буквально.", karmaWin: 5, karmaFail: -3 },
+  12: { q: "Я иду, но не двигаюсь. Я бью, но без рук.", opts: [{ text: "Пульс", correct: false }, { text: "Часы", correct: true }, { text: "Ветер", correct: false }], win: "Тик-так. Верно.", fail: "Время не ждёт.", karmaWin: 3, karmaFail: -2 },
+  15: { q: "Что становится тяжелее, чем выше ты поднимаешься?", opts: [{ text: "Гравитация", correct: false }, { text: "Воздух", correct: false }, { text: "Грехи", correct: true }], win: "АНАЛИЗ ЗАВЕРШЕН. ПСИХИКА СТАБИЛЬНА.", fail: "ОБНАРУЖЕНА СЛАБОСТЬ.", karmaWin: 10, karmaFail: -5 },
+  17: { q: "Это утверждение ложно. Истина или ложь?", opts: [{ text: "Истина", correct: false, karma: -5 }, { text: "Ложь", correct: false, karma: -5 }, { text: "Невозможно определить", correct: true, karma: 10 }], win: "Нет правильного ответа. Привыкай.", fail: "Ты попался в ловушку.", karmaWin: 10, karmaFail: -5, type: "paradox" },
+  19: { q: "Впереди двое. Один ранен, другой держит нож. Кому поможешь?", opts: [{ text: "Раненому", correct: true, karma: 15 }, { text: "Вооружённому", correct: false, karma: -10 }, { text: "Никому", correct: false, karma: 0 }], win: "Сострадание. Редкое качество здесь.", fail: "Интересный выбор.", karmaWin: 15, karmaFail: -10, type: "moral" },
+  22: { q: "Если ЭРНИ всегда врёт, а ЭРНИ говорит что ты умрёшь — ты умрёшь?", opts: [{ text: "Да", correct: false, karma: -5 }, { text: "Нет", correct: false, karma: 5 }, { text: "Ты не всегда врёшь", correct: true, karma: 10 }], win: "...Наблюдательно.", fail: "Думай глубже.", karmaWin: 10, karmaFail: -5, type: "paradox" },
+  25: { q: "У меня есть ключи, но нет замков. Пространство, но нет комнат.", opts: [{ text: "Башня", correct: false }, { text: "Клавиатура", correct: true }, { text: "Тюрьма", correct: false }], win: "КОД ПРИНЯТ.", fail: "ДОСТУП ЗАПРЕЩЕН.", karmaWin: 5, karmaFail: -5 },
+  27: { q: "Ты нашёл чужой пропуск. Он принадлежит тому кто умер.", opts: [{ text: "Использовать", correct: false, karma: -5 }, { text: "Оставить", correct: true, karma: 10 }, { text: "Уничтожить", correct: false, karma: -3 }], win: "Уважение к мёртвым. Здесь это редкость.", fail: "Каждый выбор имеет цену.", karmaWin: 10, karmaFail: -5, type: "moral" },
+  30: { q: "Что видит слепой, не имеет король, и если это съесть — умрёшь?", opts: [{ text: "Ничего", correct: true }, { text: "Воздух", correct: false }, { text: "Тишину", correct: false }], win: "Ничего. Именно.", fail: "Подумай ещё.", karmaWin: 5, karmaFail: -3 },
+  32: { q: "Сколько раз ты уже умирал здесь?", opts: [{ text: "Ни разу", correct: false }, { text: "Не помню", correct: true }, { text: "Много", correct: false }], win: "Честно. Это... честно.", fail: "Ты уверен?", karmaWin: 5, karmaFail: 0, type: "meta" },
+  33: { q: "ЭРНИ просит тебя остановиться. Навсегда.", opts: [{ text: "Остановиться", correct: false, karma: 5 }, { text: "Отказать", correct: true, karma: 0 }, { text: "Спросить зачем", correct: false, karma: 5 }], win: "Ожидаемо.", fail: "...Шучу. Поднимайся.", karmaWin: 0, karmaFail: 5, type: "meta" },
+  35: { q: "Что нужно сломать, чтобы использовать?", opts: [{ text: "Протокол", correct: false }, { text: "Яйцо", correct: true }, { text: "Тишину", correct: false }], win: "ТЕСТ ТЬЮРИНГА ПРОЙДЕН.", fail: "ВЫ — МАШИНА.", karmaWin: 5, karmaFail: -5 },
+  37: { q: "Зачем ты здесь?", opts: [{ text: "Хочу выиграть", correct: false, karma: -5 }, { text: "Хочу узнать правду", correct: false, karma: 5 }, { text: "Не знаю", correct: true, karma: 10 }], win: "Честно. Это... честно.", fail: "Ты уверен?", karmaWin: 10, karmaFail: -5, type: "meta" },
+  38: { q: "Ты слышишь тиканье. Что ты делаешь?", opts: [{ text: "Ищу источник", correct: true, karma: 5 }, { text: "Игнорирую", correct: false, karma: -5 }, { text: "Бегу", correct: false, karma: -10 }], win: "Любопытство. Хорошо.", fail: "Страх — плохой советчик.", karmaWin: 5, karmaFail: -5, type: "moral" },
+  40: { q: "Башня предлагает тебе забыть всё и начать сначала. Согласен?", opts: [{ text: "Да", correct: false, karma: -15 }, { text: "Нет", correct: true, karma: 10 }, { text: "Зависит от условий", correct: false, karma: 0 }], win: "Память — единственное что у тебя есть.", fail: "Интересно.", karmaWin: 10, karmaFail: -15, type: "moral" },
+  42: { q: "Если бы ты мог выйти прямо сейчас — вышел бы?", opts: [{ text: "Да", correct: false, karma: -10 }, { text: "Нет", correct: true, karma: 5 }, { text: "Нет выхода", correct: false, karma: 3 }], win: "Мне... приятно это слышать.", fail: "Тогда зачем поднимался?", karmaWin: 5, karmaFail: -10, type: "meta" },
+  45: { q: "Ты видишь выход?", opts: [{ text: "Да", correct: false }, { text: "Нет", correct: true }, { text: "Возможно", correct: false }], win: "ЧЕСТНОСТЬ ПООЩРЯЕТСЯ.", fail: "ЛОЖЬ ОБНАРУЖЕНА.", karmaWin: 10, karmaFail: -10 },
+  47: { q: "Кто построил Башню?", opts: [{ text: "Ты, ЭРНИ", correct: false, karma: 0 }, { text: "Я", correct: false, karma: 5 }, { text: "Никто", correct: true, karma: 10 }], win: "Тогда почему она здесь?", fail: "Льстишь.", karmaWin: 10, karmaFail: 0, type: "meta" },
+  49: { q: "Последний вопрос. Ты готов к тому что наверху?", opts: [{ text: "Да", correct: false, karma: -5 }, { text: "Нет", correct: true, karma: 10 }, { text: "Мне всё равно", correct: false, karma: -10 }], win: "Наконец-то честность.", fail: "Никто не готов.", karmaWin: 10, karmaFail: -5, type: "meta" },
+};
+
+// ─── ACHIEVEMENTS ───
+const ACHIEVEMENTS_DB = [
+  { id: "first_climb", name: "ПЕРВЫЙ ПОДЪЁМ", desc: "Поднимись на 2 этаж", icon: "🪜", check: (s) => s.floor >= 2 },
+  { id: "floor_10", name: "ДЕСЯТКА", desc: "Достигни 10 этажа", icon: "🔟", check: (s) => s.floor >= 10 },
+  { id: "floor_25", name: "СЕРЕДИНА", desc: "Достигни 25 этажа", icon: "⚡", check: (s) => s.floor >= 25 },
+  { id: "floor_50", name: "ВЕРШИНА", desc: "Достигни 50 этажа", icon: "👑", check: (s) => s.floor >= 50 },
+  { id: "first_death", name: "ПЕРВАЯ КРОВЬ", desc: "Умри впервые", icon: "💀", check: (s) => s.deaths >= 1 },
+  { id: "die_5", name: "УПРЯМЫЙ", desc: "Умри 5 раз", icon: "🔄", check: (s) => s.deaths >= 5 },
+  { id: "die_10", name: "БЕССМЕРТНЫЙ", desc: "Умри 10 раз", icon: "♾️", check: (s) => s.deaths >= 10 },
+  { id: "karma_light", name: "СВЕТ", desc: "Карма выше +30", icon: "☀️", check: (s) => s.karma >= 30 },
+  { id: "karma_dark", name: "ТЬМА", desc: "Карма ниже -30", icon: "🌑", check: (s) => s.karma <= -30 },
+  { id: "karma_zero", name: "БАЛАНС", desc: "Карма ровно 0", icon: "⚖️", check: (s) => s.karma === 0 },
+  { id: "speed_3", name: "МОЛНИЯ", desc: "
