@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 
 /* ══════════════════════════════════════════
-   ERNIE v125.0 — THE SENTIENT FINAL
-   Base: v103.0 (Твой оригинал)
-   Added: 
-   1. 🤯 Psycho Start (Биометрия при старте)
-   2. ⏳ Riddle Timer (Полоска времени 10 сек)
-   3. 🧠 Sentient Logic (ЭРНИ меняет тон от кармы)
-   4. 💾 Echo Memory (Помнит прошлый этаж)
-   Fixed: ParticleSystem is defined.
+   ERNIE v250.2 — UI POLISH & FIXES
+   Base: v250.1
+   Changes:
+   1. 🔧 FIXED: Relics button in menu now works.
+   2. 🎨 UI: Card collection grid centered and styled with gold borders for locked slots.
+   3. 🎨 UI: Boss/Event/Phone windows colors muted (toned down bright neons to gritty dark colors).
+   4. 💡 VISUAL: Increased base brightness of floor backgrounds.
    ══════════════════════════════════════════ */
 
 const IMG = {
@@ -30,8 +29,8 @@ const IMG = {
   CORE_BG: "https://media.giphy.com/media/3o7TKs7qQ4Z9dC1hXq/giphy.gif",
 };
 
-// --- AUDIO ---
-let isMuted = false;
+// --- AUDIO (DISABLED DEFAULT) ---
+let isMuted = true;
 const playSound = (type) => {
   if (typeof window === "undefined" || isMuted) return;
   try {
@@ -89,8 +88,7 @@ const playSound = (type) => {
       gain.gain.setValueAtTime(0.05, now);
       osc.start(now);
       osc.stop(now + 0.4);
-    } // Added ERNIE sound
-    else if (type === "success") {
+    } else if (type === "success") {
       osc.type = "sine";
       osc.frequency.setValueAtTime(500, now);
       gain.gain.setValueAtTime(0.1, now);
@@ -102,9 +100,153 @@ const playSound = (type) => {
       gain.gain.setValueAtTime(0.1, now);
       osc.start(now);
       osc.stop(now + 0.3);
+    } else if (type === "glitch") {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(50, now);
+      osc.frequency.linearRampToValueAtTime(200, now + 0.1);
+      osc.frequency.linearRampToValueAtTime(50, now + 0.2);
+      gain.gain.setValueAtTime(0.2, now);
+      osc.start(now);
+      osc.stop(now + 0.3);
     }
   } catch (e) {}
 };
+
+// --- ERNIE MOODS SYSTEM ---
+const MOODS = {
+  MOCK: "mock",
+  COLD: "cold",
+  PLAYFUL: "playful",
+  PHILOSOPHICAL: "philosophical",
+};
+const MOOD_COLORS = {
+  mock: "#FFD700",
+  cold: "#CCCCCC",
+  playful: "#00FFFF",
+  philosophical: "#AA88FF",
+};
+
+function calculateMood(karma, consecutiveErrors, deaths, floor, fastAnswers) {
+  if (floor >= 35 && karma > 20) return MOODS.PHILOSOPHICAL;
+  if (karma < -20 || deaths > 5) return MOODS.COLD;
+  if (consecutiveErrors >= 2) return MOODS.MOCK;
+  if (fastAnswers >= 3 || (floor > 10 && consecutiveErrors === 0))
+    return MOODS.PLAYFUL;
+  return MOODS.PLAYFUL;
+}
+
+function getErnieFloorPhrase(floor, mood, karma, deaths, echoFloor) {
+  if (floor === 13) return "Этаж 13. Суеверный?";
+  if (floor === 37) return "Этаж 37. ...Ты ведь помнишь, да?";
+  if (floor === 49) return "Предпоследний. Оглянись назад.";
+  if (floor === 50) return "...";
+  if (deaths > 0 && Math.random() < 0.25) {
+    const dp = [
+      `Попытка ${deaths + 1}. Я впечатлён. Твоим упрямством.`,
+      `Ты уже умирал ${deaths} раз. Но кто считает.`,
+      `${deaths} смертей. И ты всё ещё здесь. Интересно.`,
+    ];
+    return dp[Math.floor(Math.random() * dp.length)];
+  }
+  if (floor === 1 && echoFloor > 0 && Math.random() < 0.7) {
+    return `Опять ты? В прошлый раз ты застрял на ${echoFloor} этаже.`;
+  }
+  const phrases = {
+    mock: [
+      "Ещё один этаж. Ты прям герой.",
+      "О, ты ещё жив? Неожиданно.",
+      "Продолжай. Мне нравится наблюдать.",
+      "Ты точно уверен в своих способностях?",
+      `Этаж ${floor}. Статистика не на твоей стороне.`,
+    ],
+    cold: [
+      "...",
+      "Продолжай.",
+      "Дальше.",
+      `Этаж ${floor}.`,
+      "Ты всё ещё здесь.",
+    ],
+    playful: [
+      `Этаж ${floor}! Неплохо держишься.`,
+      "О! Ты меня удивил. Почти горжусь.",
+      "Может ты не так уж безнадёжен.",
+      `Этаж ${floor}. Ты умнее 73% погибших здесь.`,
+      "Давай дальше, у тебя получается!",
+    ],
+    philosophical: [
+      `Этаж ${floor}. Каждый этаж — это выбор. Ты выбрал подняться.`,
+      "Ты когда-нибудь думал... зачем ты поднимаешься?",
+      "Наверху ничего нет. Ты это знаешь, правда?",
+      "Может Башня — не испытание. Может это зеркало.",
+      `Этаж ${floor}. Мы оба здесь. Но по разным причинам.`,
+    ],
+  };
+  const list = phrases[mood] || phrases.playful;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function getCorrectPhrase(mood) {
+  const p = {
+    mock: ["Повезло.", "Даже слепая белка находит орех.", "Хм. Ладно."],
+    cold: ["Верно.", "Дальше.", "..."],
+    playful: ["О! Удивлён. Почти горжусь.", "Правильно!", "Неплохо!"],
+    philosophical: [
+      "Верно. Хотя истина — понятие гибкое.",
+      "Ты ответил. Но понял ли?",
+      "Правильный ответ. Но что делает его правильным?",
+    ],
+  };
+  const list = p[mood] || p.playful;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function getWrongPhrase(mood, consErrors) {
+  if (consErrors >= 3) return "Ты точно читаешь? Или просто жмёшь кнопки?";
+  const p = {
+    mock: ["Нет. Просто нет.", "Серьёзно?", "Ты разочаровываешь."],
+    cold: ["Неверно.", "Нет.", "...Нет."],
+    playful: ["Мимо!", "Неа. Попробуй подумать.", "Ошибка. Бывает."],
+    philosophical: [
+      "Неверно. Но ошибка — тоже ответ.",
+      "Нет. Впрочем, что есть 'нет'?",
+      "Неправильно. Но ты узнал что-то о себе.",
+    ],
+  };
+  const list = p[mood] || p.playful;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function getKarmaModifiers(karma) {
+  if (karma >= 30)
+    return {
+      enemyHpMult: 0.85,
+      enemyDmgMult: 0.9,
+      timerBonus: 2,
+      riskBonus: 0.05,
+      crtIntensity: 0.3,
+      ernieLies: false,
+      overlay: "light",
+    };
+  if (karma <= -30)
+    return {
+      enemyHpMult: 1.2,
+      enemyDmgMult: 1.1,
+      timerBonus: -2,
+      riskBonus: 0,
+      crtIntensity: 0.8,
+      ernieLies: Math.random() < 0.15,
+      overlay: "dark",
+    };
+  return {
+    enemyHpMult: 1,
+    enemyDmgMult: 1,
+    timerBonus: 0,
+    riskBonus: 0,
+    crtIntensity: 0.5,
+    ernieLies: false,
+    overlay: "neutral",
+  };
+}
 
 // --- DATA ---
 const ROLES = {
@@ -129,8 +271,33 @@ const ROLES = {
 };
 
 const RIDDLES = {
+  1: {
+    q: "Я везде, но меня не видно. Я важен, но меня не слышно. Что я?",
+    opts: [
+      { text: "Воздух", correct: true },
+      { text: "Время", correct: false },
+      { text: "Страх", correct: false },
+    ],
+    win: "Хм. Повезло.",
+    fail: "Интересно...",
+    karmaWin: 3,
+    karmaFail: -3,
+    intro: true,
+  },
+  3: {
+    q: "Меня создали чтобы запирать, но я ничего не запираю. Что я?",
+    opts: [
+      { text: "Замок", correct: false },
+      { text: "Обещание", correct: true },
+      { text: "Код", correct: false },
+    ],
+    win: "Философ на третьем этаже. Редкость.",
+    fail: "Нет.",
+    karmaWin: 5,
+    karmaFail: -3,
+  },
   5: {
-    q: "Я не живой, но я решаю, кто выживет. Я везде, но у меня нет тела. Кто я?",
+    q: "Я не живой, но решаю кто выживет. Я везде, но у меня нет тела.",
     opts: [
       { text: "Призрак", correct: false },
       { text: "ЭРНИ", correct: true },
@@ -138,6 +305,44 @@ const RIDDLES = {
     ],
     win: "ДОСТУП РАЗРЕШЕН.",
     fail: "ОШИБКА ИДЕНТИФИКАЦИИ.",
+    karmaWin: 5,
+    karmaFail: -5,
+  },
+  7: {
+    q: "Чем больше из меня берёшь, тем больше я становлюсь.",
+    opts: [
+      { text: "Долг", correct: false },
+      { text: "Яма", correct: true },
+      { text: "Знание", correct: false },
+    ],
+    win: "Правильно. Копай глубже.",
+    fail: "Мимо.",
+    karmaWin: 3,
+    karmaFail: -2,
+  },
+  10: {
+    q: "У меня есть города, но нет домов. Леса, но нет деревьев.",
+    opts: [
+      { text: "Симуляция", correct: false },
+      { text: "Карта", correct: true },
+      { text: "Сон", correct: false },
+    ],
+    win: "Ты видишь дальше чем кажется.",
+    fail: "Слишком буквально.",
+    karmaWin: 5,
+    karmaFail: -3,
+  },
+  12: {
+    q: "Я иду, но не двигаюсь. Я бью, но без рук.",
+    opts: [
+      { text: "Пульс", correct: false },
+      { text: "Часы", correct: true },
+      { text: "Ветер", correct: false },
+    ],
+    win: "Тик-так. Верно.",
+    fail: "Время не ждёт.",
+    karmaWin: 3,
+    karmaFail: -2,
   },
   15: {
     q: "Что становится тяжелее, чем выше ты поднимаешься?",
@@ -148,9 +353,50 @@ const RIDDLES = {
     ],
     win: "АНАЛИЗ ЗАВЕРШЕН. ПСИХИКА СТАБИЛЬНА.",
     fail: "ОБНАРУЖЕНА СЛАБОСТЬ.",
+    karmaWin: 10,
+    karmaFail: -5,
+  },
+  17: {
+    q: "Это утверждение ложно. Истина или ложь?",
+    opts: [
+      { text: "Истина", correct: false, karma: -5 },
+      { text: "Ложь", correct: false, karma: -5 },
+      { text: "Невозможно", correct: true, karma: 10 },
+    ],
+    win: "Нет правильного ответа. Привыкай.",
+    fail: "Ты попался в ловушку.",
+    karmaWin: 10,
+    karmaFail: -5,
+    type: "paradox",
+  },
+  19: {
+    q: "Впереди двое. Один ранен, другой держит нож. Кому поможешь?",
+    opts: [
+      { text: "Раненому", correct: true, karma: 15 },
+      { text: "Вооружённому", correct: false, karma: -10 },
+      { text: "Никому", correct: false, karma: 0 },
+    ],
+    win: "Сострадание. Редкое качество здесь.",
+    fail: "Интересный выбор.",
+    karmaWin: 15,
+    karmaFail: -10,
+    type: "moral",
+  },
+  22: {
+    q: "Если ЭРНИ всегда врёт, а ЭРНИ говорит что ты умрёшь — ты умрёшь?",
+    opts: [
+      { text: "Да", correct: false, karma: -5 },
+      { text: "Нет", correct: false, karma: 5 },
+      { text: "Ты не всегда врёшь", correct: true, karma: 10 },
+    ],
+    win: "...Наблюдательно.",
+    fail: "Думай глубже.",
+    karmaWin: 10,
+    karmaFail: -5,
+    type: "paradox",
   },
   25: {
-    q: "У меня есть ключи, но нет замков. У меня есть пространство, но нет комнат.",
+    q: "У меня есть ключи, но нет замков. Пространство, но нет комнат.",
     opts: [
       { text: "Башня", correct: false },
       { text: "Клавиатура", correct: true },
@@ -158,6 +404,59 @@ const RIDDLES = {
     ],
     win: "КОД ПРИНЯТ.",
     fail: "ДОСТУП ЗАПРЕЩЕН.",
+    karmaWin: 5,
+    karmaFail: -5,
+  },
+  27: {
+    q: "Ты нашёл чужой пропуск. Он принадлежит тому кто умер.",
+    opts: [
+      { text: "Использовать", correct: false, karma: -5 },
+      { text: "Оставить", correct: true, karma: 10 },
+      { text: "Уничтожить", correct: false, karma: -3 },
+    ],
+    win: "Уважение к мёртвым. Здесь это редкость.",
+    fail: "Каждый выбор имеет цену.",
+    karmaWin: 10,
+    karmaFail: -5,
+    type: "moral",
+  },
+  30: {
+    q: "Что видит слепой, не имеет король, и если это съесть — умрёшь?",
+    opts: [
+      { text: "Ничего", correct: true },
+      { text: "Воздух", correct: false },
+      { text: "Тишину", correct: false },
+    ],
+    win: "Ничего. Именно.",
+    fail: "Подумай ещё.",
+    karmaWin: 5,
+    karmaFail: -3,
+  },
+  32: {
+    q: "Сколько раз ты уже умирал здесь?",
+    opts: [
+      { text: "Ни разу", correct: false },
+      { text: "Не помню", correct: true },
+      { text: "Много", correct: false },
+    ],
+    win: "Честно. Это... честно.",
+    fail: "Ты уверен?",
+    karmaWin: 5,
+    karmaFail: 0,
+    type: "meta",
+  },
+  33: {
+    q: "ЭРНИ просит тебя остановиться. Навсегда.",
+    opts: [
+      { text: "Остановиться", correct: false, karma: 5 },
+      { text: "Отказать", correct: true, karma: 0 },
+      { text: "Спросить зачем", correct: false, karma: 5 },
+    ],
+    win: "Ожидаемо.",
+    fail: "...Шучу. Поднимайся.",
+    karmaWin: 0,
+    karmaFail: 5,
+    type: "meta",
   },
   35: {
     q: "Что нужно сломать, чтобы использовать?",
@@ -168,6 +467,60 @@ const RIDDLES = {
     ],
     win: "ТЕСТ ТЬЮРИНГА ПРОЙДЕН.",
     fail: "ВЫ — МАШИНА.",
+    karmaWin: 5,
+    karmaFail: -5,
+  },
+  37: {
+    q: "Зачем ты здесь?",
+    opts: [
+      { text: "Хочу выиграть", correct: false, karma: -5 },
+      { text: "Хочу узнать правду", correct: false, karma: 5 },
+      { text: "Не знаю", correct: true, karma: 10 },
+    ],
+    win: "Честно. Это... честно.",
+    fail: "Ты уверен?",
+    karmaWin: 10,
+    karmaFail: -5,
+    type: "meta",
+  },
+  38: {
+    q: "Ты слышишь тиканье. Что ты делаешь?",
+    opts: [
+      { text: "Ищу источник", correct: true, karma: 5 },
+      { text: "Игнорирую", correct: false, karma: -5 },
+      { text: "Бегу", correct: false, karma: -10 },
+    ],
+    win: "Любопытство. Хорошо.",
+    fail: "Страх — плохой советчик.",
+    karmaWin: 5,
+    karmaFail: -5,
+    type: "moral",
+  },
+  40: {
+    q: "Башня предлагает забыть всё и начать сначала. Согласен?",
+    opts: [
+      { text: "Да", correct: false, karma: -15 },
+      { text: "Нет", correct: true, karma: 10 },
+      { text: "Зависит от условий", correct: false, karma: 0 },
+    ],
+    win: "Память — единственное что у тебя есть.",
+    fail: "Интересно.",
+    karmaWin: 10,
+    karmaFail: -15,
+    type: "moral",
+  },
+  42: {
+    q: "Если бы ты мог выйти прямо сейчас — вышел бы?",
+    opts: [
+      { text: "Да", correct: false, karma: -10 },
+      { text: "Нет", correct: true, karma: 5 },
+      { text: "Нет выхода", correct: false, karma: 3 },
+    ],
+    win: "Мне... приятно это слышать.",
+    fail: "Тогда зачем поднимался?",
+    karmaWin: 5,
+    karmaFail: -10,
+    type: "meta",
   },
   45: {
     q: "Ты видишь выход?",
@@ -178,8 +531,144 @@ const RIDDLES = {
     ],
     win: "ЧЕСТНОСТЬ ПООЩРЯЕТСЯ.",
     fail: "ЛОЖЬ ОБНАРУЖЕНА.",
+    karmaWin: 10,
+    karmaFail: -10,
+  },
+  47: {
+    q: "Кто построил Башню?",
+    opts: [
+      { text: "Ты, ЭРНИ", correct: false, karma: 0 },
+      { text: "Я", correct: false, karma: 5 },
+      { text: "Никто", correct: true, karma: 10 },
+    ],
+    win: "Тогда почему она здесь?",
+    fail: "Льстишь.",
+    karmaWin: 10,
+    karmaFail: 0,
+    type: "meta",
+  },
+  49: {
+    q: "Последний вопрос. Ты готов к тому что наверху?",
+    opts: [
+      { text: "Да", correct: false, karma: -5 },
+      { text: "Нет", correct: true, karma: 10 },
+      { text: "Мне всё равно", correct: false, karma: -10 },
+    ],
+    win: "Наконец-то честность.",
+    fail: "Никто не готов.",
+    karmaWin: 10,
+    karmaFail: -5,
+    type: "meta",
   },
 };
+
+const ACHIEVEMENTS_DB = [
+  {
+    id: "first_climb",
+    name: "ПЕРВЫЙ ПОДЪЁМ",
+    desc: "Поднимись на 2 этаж",
+    icon: "🪜",
+    check: (s) => s.floor >= 2,
+  },
+  {
+    id: "floor_10",
+    name: "ДЕСЯТКА",
+    desc: "Достигни 10 этажа",
+    icon: "🔟",
+    check: (s) => s.floor >= 10,
+  },
+  {
+    id: "floor_25",
+    name: "СЕРЕДИНА",
+    desc: "Достигни 25 этажа",
+    icon: "⚡",
+    check: (s) => s.floor >= 25,
+  },
+  {
+    id: "floor_50",
+    name: "ВЕРШИНА",
+    desc: "Достигни 50 этажа",
+    icon: "👑",
+    check: (s) => s.floor >= 50,
+  },
+  {
+    id: "first_death",
+    name: "ПЕРВАЯ КРОВЬ",
+    desc: "Умри впервые",
+    icon: "💀",
+    check: (s) => s.deaths >= 1,
+  },
+  {
+    id: "die_5",
+    name: "УПРЯМЫЙ",
+    desc: "Умри 5 раз",
+    icon: "🔄",
+    check: (s) => s.deaths >= 5,
+  },
+  {
+    id: "die_10",
+    name: "БЕССМЕРТНЫЙ",
+    desc: "Умри 10 раз",
+    icon: "♾️",
+    check: (s) => s.deaths >= 10,
+  },
+  {
+    id: "karma_light",
+    name: "СВЕТ",
+    desc: "Карма выше +30",
+    icon: "☀️",
+    check: (s) => s.karma >= 30,
+  },
+  {
+    id: "karma_dark",
+    name: "ТЬМА",
+    desc: "Карма ниже -30",
+    icon: "🌑",
+    check: (s) => s.karma <= -30,
+  },
+  {
+    id: "karma_zero",
+    name: "БАЛАНС",
+    desc: "Карма ровно 0",
+    icon: "⚖️",
+    check: (s) => s.karma === 0,
+  },
+  {
+    id: "speed_3",
+    name: "МОЛНИЯ",
+    desc: "Ответь за 3 секунды",
+    icon: "⚡",
+    check: (s) => s.fastAnswer,
+  },
+  {
+    id: "all_relics",
+    name: "КОЛЛЕКЦИОНЕР",
+    desc: "Собери все реликвии",
+    icon: "🏆",
+    check: (s) => s.relics.length >= 6,
+  },
+  {
+    id: "perfect_riddle",
+    name: "МУДРЕЦ",
+    desc: "Реши 10 загадок подряд",
+    icon: "🧠",
+    check: (s) => s.riddleStreak >= 10,
+  },
+  {
+    id: "survivor",
+    name: "ВЫЖИВШИЙ",
+    desc: "Дойди до 50 без смертей",
+    icon: "🛡️",
+    check: (s) => s.floor >= 50 && s.deaths === 0,
+  },
+  {
+    id: "risk_master",
+    name: "АЗАРТНЫЙ",
+    desc: "Используй риск 20 раз",
+    icon: "🎲",
+    check: (s) => s.totalRisk >= 20,
+  },
+];
 
 const CONTRACTS_DB = [
   { id: "c1", text: "Достичь 15 этажа", type: "floor", target: 15, reward: 5 },
@@ -200,6 +689,116 @@ const CONTRACTS_DB = [
   { id: "c4", text: "Победить Стража", type: "boss", target: 1, reward: 10 },
   { id: "c5", text: "Пережить Глитч", type: "glitch", target: 1, reward: 3 },
 ];
+
+// --- CARDS DATABASE ---
+const CARDS_DATABASE = {
+  starter: {
+    id: "starter",
+    name: "ПЕРВЫЙ ШАГ",
+    type: "gate",
+    rarity: "starter",
+    rarityColor: "#FFFFFF",
+    effect: "safe_room",
+    description: "Телепорт в безопасную комнату отдыха",
+    lore: "Каждый когда-то делал первый шаг. Ты не исключение.",
+    reward: { energy: 20 },
+    cost: 0,
+    image: "https://i.imgur.com/PLACEHOLDER1.png",
+    singleUse: true,
+    duration: 300,
+    minigame: null,
+  },
+  ticket: {
+    id: "ticket",
+    name: "БИЛЕТ В НИКУДА",
+    type: "gate",
+    rarity: "common",
+    rarityColor: "#00FF00",
+    effect: "random_layer",
+    description: "Телепорт в случайный мини-слой",
+    lore: "Кондуктор спросил: 'Куда?' Я ответил: 'Куда-нибудь.'",
+    reward: { influence: 30, itemChance: 0.3 },
+    cost: 5,
+    image: "https://i.imgur.com/PLACEHOLDER2.png",
+    duration: 300,
+    minigame: "city_escape",
+  },
+  wings: {
+    id: "wings",
+    name: "КРЫЛЬЯ НОЧИ",
+    type: "mutation",
+    rarity: "common",
+    rarityColor: "#00FF00",
+    effect: "flight_30s",
+    description: "Полёт 30 секунд + сбор предметов",
+    lore: "У птиц нет кармы. Может, поэтому они свободны?",
+    reward: { itemChance: 1 },
+    cost: 10,
+    image: "https://i.imgur.com/PLACEHOLDER3.png",
+    cooldown: 600,
+    minigame: "flight_collect",
+  },
+  hunger: {
+    id: "hunger",
+    name: "ГОЛОД",
+    type: "curse",
+    rarity: "common",
+    rarityColor: "#00FF00",
+    effect: "no_heal_double_reward",
+    description: "Нельзя лечиться, но вдвое больше наград",
+    lore: "Когда желудок пуст, глаза видят яснее.",
+    reward: { influenceMult: 2, itemChance: 0.5 },
+    cost: 8,
+    image: "https://i.imgur.com/PLACEHOLDER4.png",
+    modifier: true,
+    minigame: null,
+  },
+  breath: {
+    id: "breath",
+    name: "ПОСЛЕДНИЙ ВЗДОХ",
+    type: "memory",
+    rarity: "common",
+    rarityColor: "#00FF00",
+    effect: "show_story",
+    description: "Сюжет погибшего игрока + квест",
+    lore: "Он сказал: 'Мама, я вернусь.' Не вернулся.",
+    reward: { karma: 10, quest: true },
+    cost: 5,
+    image: "https://i.imgur.com/PLACEHOLDER5.png",
+    minigame: "memory_story",
+  },
+  mirror: {
+    id: "mirror",
+    name: "ЗЕРКАЛЬНЫЙ ЛАБИРИНТ",
+    type: "trap",
+    rarity: "rare",
+    rarityColor: "#FFFF00",
+    effect: "mirror_game",
+    description: "Найди настоящего себя из 9 зеркал",
+    lore: "В каждом зеркале — ты. Но только один настоящий.",
+    reward: { uniqueItem: true },
+    risk: { energy: -20 },
+    cost: 7,
+    image: "https://i.imgur.com/PLACEHOLDER6.png",
+    minigame: "mirror_maze",
+  },
+  revive: {
+    id: "revive",
+    name: "РАЗБИТЬ ПРИ СМЕРТИ",
+    type: "universal",
+    rarity: "legendary",
+    rarityColor: "#FF0000",
+    effect: "auto_revive",
+    description: "Автовоскрешение при смерти",
+    lore: "Смерть — это не конец. Это пауза.",
+    reward: { hp: 50 },
+    cost: 100,
+    image: "https://i.imgur.com/PLACEHOLDER7.png",
+    passive: true,
+    singleUse: true,
+    maxStack: 1,
+  },
+};
 
 const ITEMS = {
   battery: {
@@ -241,6 +840,48 @@ const ITEMS = {
     type: "key",
     effect: () => {},
   },
+};
+
+const GHOST_MESSAGES = [
+  { text: "Не доверяй на 23", floor: 22, karma: -15 },
+  { text: "Карма решает всё", floor: 15, karma: 25 },
+  { text: "ERNIE врёт на 37", floor: 36, karma: -5 },
+  { text: "Здесь был выход", floor: 12, karma: 0 },
+  { text: "Беги отсюда", floor: 8, karma: -20 },
+  { text: "Наверху ничего нет", floor: 45, karma: -30 },
+  { text: "Я дошёл до 50", floor: 49, karma: 40 },
+  { text: "Это не игра", floor: 30, karma: -25 },
+  { text: "ERNIE — это ты", floor: 40, karma: 10 },
+  { text: "Второй круг сложнее", floor: 25, karma: 5 },
+  { text: "Призраки реальны", floor: 18, karma: -10 },
+  { text: "Не открывай дверь", floor: 33, karma: -15 },
+  { text: "Зеркало лжёт", floor: 27, karma: -8 },
+  { text: "Они следят", floor: 35, karma: -18 },
+  { text: "Выхода нет", floor: 42, karma: -35 },
+  { text: "Я был здесь вчера", floor: 10, karma: 0 },
+  { text: "Карма +30 = свет", floor: 45, karma: 30 },
+  { text: "Умри 10 раз = секрет", floor: 20, karma: -12 },
+  { text: "ERNIE боится тишины", floor: 29, karma: 5 },
+  { text: "Реликвии — ключи", floor: 38, karma: 15 },
+  { text: "Я тебя помню", floor: 13, karma: -20 },
+  { text: "Это петля", floor: 47, karma: -25 },
+  { text: "Башня дышит", floor: 31, karma: -10 },
+  { text: "Ты уже умирал здесь", floor: 14, karma: -30 },
+  { text: "Наверху — пустота", floor: 48, karma: -28 },
+  { text: "Я видел конец", floor: 49, karma: -40 },
+  { text: "Не верь себе", floor: 37, karma: -22 },
+  { text: "Это не ты выбираешь", floor: 40, karma: -15 },
+  { text: "Дойди до -50", floor: 44, karma: 20 },
+  { text: "Внизу правда", floor: 46, karma: 12 },
+];
+
+const DIARY_LOGS = {
+  5: "Запись 1: Эрни — это не человек. Это имя на сервере.",
+  10: "Запись 2: Страж на 10-м этаже — это бывший лифтер.",
+  15: "Запись 3: Они говорят, что наверху есть выход.",
+  20: "Запись 4: Мы не поднимаемся. Мы просто ходим по кругу.",
+  25: "Запись 5: Ключ Черепа — это бэкдор создателя.",
+  30: "Запись 6: Элита живет в садах. Они забыли небо.",
 };
 
 const RANDOM_EVENTS = [
@@ -287,7 +928,6 @@ const ENEMIES = {
     text: "010101010...",
   },
 };
-
 const UPGRADES = [
   {
     id: "battery",
@@ -312,69 +952,7 @@ const UPGRADES = [
   },
 ];
 
-const RELICS_DB = [
-  {
-    id: "watch",
-    icon: "🕰️",
-    name: "ЧАСЫ",
-    effect: "РИСК +1",
-    lore: "Время замерло.",
-    bonus: { extraRisk: 1 },
-  },
-  {
-    id: "skull",
-    icon: "💀",
-    name: "ЧЕРЕП",
-    effect: "ТАЙНЫ",
-    lore: "Шепчет коды.",
-    bonus: { secretDoor: 100 },
-  },
-  {
-    id: "photo",
-    icon: "📷",
-    name: "ФОТО",
-    effect: "ЭНЕРГИЯ",
-    lore: "Теплое.",
-    bonus: { maxEnergy: 1.1 },
-  },
-  {
-    id: "compass",
-    icon: "🧭",
-    name: "КОМПАС",
-    effect: "СБОИ",
-    lore: "Дрожит.",
-    bonus: { revealHidden: true },
-  },
-  {
-    id: "scroll",
-    icon: "📜",
-    name: "ЧЕРТЕЖ",
-    effect: "РАСХОД",
-    lore: "Схемы.",
-    bonus: { costReduc: 5 },
-  },
-  {
-    id: "chain",
-    icon: "⛓️",
-    name: "ЦЕПЬ",
-    effect: "ЗАЩИТА",
-    lore: "Тяжелая.",
-    bonus: { defense: 10 },
-  },
-];
-
-const DIARY_LOGS = {
-  5: "Запись 1: Эрни — это не человек. Это имя на сервере.",
-  10: "Запись 2: Страж на 10-м этаже — это бывший лифтер.",
-  15: "Запись 3: Они говорят, что наверху есть выход.",
-  20: "Запись 4: Мы не поднимаемся. Мы просто ходим по кругу.",
-  25: "Запись 5: Ключ Черепа — это бэкдор создателя.",
-  30: "Запись 6: Элита живет в садах. Они забыли небо.",
-};
-
 // --- COMPONENTS ---
-
-// 1. Particle System (Fix for ReferenceError)
 function ParticleSystem() {
   return (
     <div
@@ -405,8 +983,6 @@ function ParticleSystem() {
     </div>
   );
 }
-
-// 2. Helper Components
 function useTypewriter(fullText, speed = 35) {
   const [displayed, setDisplayed] = useState("");
   const [done, setDone] = useState(false);
@@ -429,58 +1005,6 @@ function useTypewriter(fullText, speed = 35) {
   }, [fullText, speed]);
   return { displayed, done };
 }
-
-function EnergyPulse({ energy, max, influence, cycle }) {
-  const pct = Math.max(0, Math.min(1, energy / max));
-  let color = pct < 0.2 ? "#FF0000" : pct < 0.5 ? "#E94560" : "#666";
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-        <span style={{ fontSize: 11, color: "#666" }}>⚡</span>
-        <div
-          style={{
-            width: 70,
-            height: 8,
-            background: "#111",
-            borderRadius: 4,
-            border: "1px solid #333",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: `${pct * 100}%`,
-              height: "100%",
-              background: `linear-gradient(90deg, ${color}, #fff)`,
-              transition: "width 0.5s ease",
-            }}
-          />
-        </div>
-        <span style={{ fontSize: 10, color: "#ccc", fontWeight: "bold" }}>
-          {Math.floor(energy)}
-        </span>
-      </div>
-      <div
-        style={{
-          fontSize: 10,
-          color: "#E0C068",
-          fontWeight: "bold",
-          border: "1px solid #E0C068",
-          padding: "2px 5px",
-          borderRadius: 4,
-        }}
-      >
-        👑 {influence}
-      </div>
-      {cycle > 0 && (
-        <div style={{ fontSize: 10, color: "#A020F0", fontWeight: "bold" }}>
-          🌀 {cycle}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Floater({ id, text, color, x, y }) {
   return (
     <div
@@ -499,6 +1023,50 @@ function Floater({ id, text, color, x, y }) {
       }}
     >
       {text}
+    </div>
+  );
+}
+function LivesTimer() {
+  const [timeLeft, setTimeLeft] = useState("");
+  useEffect(() => {
+    const updateTimer = () => {
+      const lastDeath =
+        Number(localStorage.getItem("ernie_last_death_time")) || Date.now();
+      const nextRestore = lastDeath + 3 * 60 * 60 * 1000;
+      const diff = nextRestore - Date.now();
+      if (diff <= 0) {
+        setTimeLeft("Готово!");
+        const currentLives = Number(localStorage.getItem("ernie_lives")) || 0;
+        if (currentLives < 5) {
+          localStorage.setItem("ernie_lives", currentLives + 1);
+          localStorage.setItem("ernie_last_death_time", Date.now());
+          window.location.reload();
+        }
+      } else {
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        setTimeLeft(
+          `${hours}:${String(minutes).padStart(2, "0")}:${String(
+            seconds
+          ).padStart(2, "0")}`
+        );
+      }
+    };
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, []);
+  return (
+    <div
+      style={{
+        fontSize: 24,
+        color: "#E94560",
+        fontWeight: "bold",
+        fontFamily: "monospace",
+      }}
+    >
+      {timeLeft}
     </div>
   );
 }
@@ -543,12 +1111,83 @@ export default function ErnieGame() {
         CONTRACTS_DB[2],
       ]
   );
+  const [deaths, setDeaths] = useState(
+    () => Number(localStorage.getItem("ernie_deaths")) || 0
+  );
+  const [achievements, setAchievements] = useState(
+    () => JSON.parse(localStorage.getItem("ernie_achievements")) || []
+  );
+  const [consecutiveErrors, setConsecutiveErrors] = useState(0);
+  const [fastAnswers, setFastAnswers] = useState(0);
+  const [riddleStreak, setRiddleStreak] = useState(
+    () => Number(localStorage.getItem("ernie_riddle_streak")) || 0
+  );
+  const [totalRisk, setTotalRisk] = useState(
+    () => Number(localStorage.getItem("ernie_total_risk")) || 0
+  );
+  const [riddleStartTime, setRiddleStartTime] = useState(0);
+  const [showAchievements, setShowAchievements] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [ernieExpanded, setErnieExpanded] = useState(true);
+  const [callsCompleted, setCallsCompleted] = useState(
+    () => JSON.parse(localStorage.getItem("ernie_calls_completed")) || []
+  );
+  const [showEnding, setShowEnding] = useState(false);
+  const [endingType, setEndingType] = useState(null);
+  const [introPhase, setIntroPhase] = useState(() => {
+    if (typeof window !== "undefined") {
+      const hasSeenIntro = localStorage.getItem("ernie_intro_seen");
+      return hasSeenIntro ? null : 0;
+    }
+    return 0;
+  });
+  const [telegramUsername, setTelegramUsername] = useState("");
+  const [ghostMessage, setGhostMessage] = useState(null);
+  const [lives, setLives] = useState(() => {
+    const saved = localStorage.getItem("ernie_lives");
+    const lastDeath = localStorage.getItem("ernie_last_death_time");
+    if (saved && lastDeath) {
+      const hoursPassed = (Date.now() - Number(lastDeath)) / (1000 * 60 * 60);
+      return Math.min(5, Number(saved) + Math.floor(hoursPassed / 3));
+    }
+    return 5;
+  });
+  const [showNoLives, setShowNoLives] = useState(false);
 
+  // --- CARD SYSTEM STATE ---
+  const [playerCards, setPlayerCards] = useState(
+    () =>
+      JSON.parse(localStorage.getItem("ernie_player_cards")) || [
+        "starter",
+        "hunger",
+        "breath",
+      ]
+  );
+  const [activeCard, setActiveCard] = useState(null);
+  const [cardMinigame, setCardMinigame] = useState(null);
+  const [showCardCollection, setShowCardCollection] = useState(false);
+  const [selectedCard, setSelectedCard] = useState(null);
+  const [mirrorPositions, setMirrorPositions] = useState([]);
+  const [mirrorCorrect, setMirrorCorrect] = useState(null);
+  const [mirrorAttempts, setMirrorAttempts] = useState(3);
+  const [flightTimer, setFlightTimer] = useState(30);
+  const [flightItems, setFlightItems] = useState([]);
+  const [flightCollected, setFlightCollected] = useState(0);
+  const [memoryStory, setMemoryStory] = useState(null);
+  // eslint-disable-next-line no-unused-vars
+  const [memoryQuest, setMemoryQuest] = useState(null);
+
+  const mood = calculateMood(
+    karma,
+    consecutiveErrors,
+    deaths,
+    floor,
+    fastAnswers
+  );
+  const karmamod = getKarmaModifiers(karma);
   const [phase, setPhase] = useState("floor");
   const [currentText, setCurrentText] = useState("");
-  const [muted, setMuted] = useState(false);
-
-  // Sentient States (NEW)
+  const [muted, setMuted] = useState(true);
   const [isIntroActive, setIsIntroActive] = useState(false);
   const [incomingCall, setIncomingCall] = useState(false);
   const [activeRiddle, setActiveRiddle] = useState(null);
@@ -557,8 +1196,6 @@ export default function ErnieGame() {
   const [echoFloor, setEchoFloor] = useState(
     () => Number(localStorage.getItem("ernie_echo")) || 0
   );
-
-  // Modals & UI
   const [showRelics, setShowRelics] = useState(false);
   const [showBag, setShowBag] = useState(false);
   const [showMerchant, setShowMerchant] = useState(false);
@@ -566,11 +1203,10 @@ export default function ErnieGame() {
   const [showFloors, setShowFloors] = useState(false);
   const [showDiary, setShowDiary] = useState(false);
   const [showKarmaView, setShowKarmaView] = useState(false);
-  const [showEnding, setShowEnding] = useState(false);
+  // eslint-disable-next-line no-unused-vars
+  const [showEndingScreen, setShowEndingScreen] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [selectedRelicInfo, setSelectedRelicInfo] = useState(null);
-
-  // Events & FX
   const [isGlitchActive, setIsGlitchActive] = useState(false);
   const [bossData, setBossData] = useState(null);
   const [activeEvent, setActiveEvent] = useState(null);
@@ -582,7 +1218,6 @@ export default function ErnieGame() {
   const [sosLoading, setSosLoading] = useState(false);
   const [trialResult, setTrialResult] = useState(null);
   const [fxFlash, setFxFlash] = useState(null);
-
   const scrollRef = useRef(null);
   const { displayed, done } = useTypewriter(
     currentText,
@@ -597,7 +1232,185 @@ export default function ErnieGame() {
     return { img: "OFFICE", name: "АДМИНИСТРАЦИЯ" };
   };
 
-  // Stats
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp;
+      const username =
+        tg.initDataUnsafe?.user?.username ||
+        tg.initDataUnsafe?.user?.first_name ||
+        "UNKNOWN_USER";
+      setTelegramUsername(username);
+    } else {
+      setTelegramUsername("TEST_USER");
+    }
+  }, []);
+
+  // --- CARD SYSTEM FUNCTIONS ---
+  const useCard = (cardId) => {
+    const card = CARDS_DATABASE[cardId];
+    if (!card) return;
+    playSound("click");
+    setActiveCard(cardId);
+    if (card.minigame) {
+      startMinigame(card.minigame);
+    } else {
+      applyCardEffect(card);
+    }
+  };
+
+  const startMinigame = (gameType) => {
+    setCardMinigame(gameType);
+    if (gameType === "mirror_maze") {
+      const positions = Array.from({ length: 9 }, (_, i) => i);
+      const correctPos = Math.floor(Math.random() * 9);
+      setMirrorPositions(positions);
+      setMirrorCorrect(correctPos);
+      setMirrorAttempts(3);
+    } else if (gameType === "flight_collect") {
+      setFlightTimer(30);
+      const items = Array.from({ length: 5 }, (_, i) => ({
+        id: i,
+        x: Math.random() * 80 + 10,
+        y: Math.random() * 60 + 20,
+      }));
+      setFlightItems(items);
+      setFlightCollected(0);
+    } else if (gameType === "memory_story") {
+      const stories = [
+        {
+          name: "USER_7823",
+          lastWords: "Мама, я вернусь...",
+          floor: 37,
+          killer: "Ловец душ",
+        },
+        {
+          name: "USER_4521",
+          lastWords: "Почти... ещё 3 этажа...",
+          floor: 47,
+          killer: "Босс",
+        },
+        {
+          name: "USER_9012",
+          lastWords: "ERNIE врёт!",
+          floor: 25,
+          killer: "Глитч",
+        },
+      ];
+      const story = stories[Math.floor(Math.random() * stories.length)];
+      setMemoryStory(story);
+    }
+  };
+
+  const applyCardEffect = (card) => {
+    if (card.effect === "safe_room") {
+      const max = Math.floor(floor <= 10 ? 100 : floor <= 30 ? 140 : 220);
+      setEnergy((e) => Math.min(e + card.reward.energy, max));
+      setTrialResult("Комната отдыха. +20 ЭН");
+      spawnFloater("+20 ЭН", "#0f0");
+      setTimeout(() => {
+        setActiveCard(null);
+        if (card.singleUse) {
+          setPlayerCards((prev) => prev.filter((c) => c !== card.id));
+        }
+      }, 5000);
+    } else if (card.effect === "no_heal_double_reward") {
+      setTrialResult(
+        "Проклятие активировано: Нельзя лечиться, но вдвое больше влияния!"
+      );
+      setActiveCard(null);
+    }
+  };
+
+  const handleMirrorClick = (index) => {
+    if (index === mirrorCorrect) {
+      playSound("success");
+      setInventory((prev) => [...prev, "mirror"]);
+      setTrialResult("🪞 Найдено! Уникальный предмет!");
+      spawnFloater("ПРЕДМЕТ!", "#FFD700");
+      setTimeout(() => finishCard(), 2000);
+    } else {
+      playSound("error");
+      const newAttempts = mirrorAttempts - 1;
+      setMirrorAttempts(newAttempts);
+      if (newAttempts <= 0) {
+        setEnergy((e) => Math.max(0, e - 20));
+        setTrialResult("❌ Провал. -20 ЭН");
+        setTimeout(() => finishCard(), 2000);
+      } else {
+        setTrialResult(`Неверно! Осталось попыток: ${newAttempts}`);
+      }
+    }
+  };
+
+  const collectFlightItem = (itemId) => {
+    playSound("success");
+    setFlightItems((prev) => prev.filter((item) => item.id !== itemId));
+    setFlightCollected((c) => c + 1);
+    spawnFloater("+ПРЕДМЕТ", "#0f0");
+  };
+
+  const finishCard = () => {
+    setActiveCard(null);
+    setCardMinigame(null);
+    setMirrorPositions([]);
+    setFlightItems([]);
+    setMemoryStory(null);
+  };
+
+  useEffect(() => {
+    if (cardMinigame === "flight_collect" && flightTimer > 0) {
+      const timer = setTimeout(() => setFlightTimer((t) => t - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (flightTimer === 0 && cardMinigame === "flight_collect") {
+      setTrialResult(`Собрано: ${flightCollected}/5`);
+      setInfluence((i) => i + flightCollected * 10);
+      setTimeout(() => finishCard(), 2000);
+    }
+  }, [cardMinigame, flightTimer, flightCollected]);
+
+  // --- END CARD FUNCTIONS ---
+
+  useEffect(() => {
+    if (introPhase === null) return;
+    let timer;
+    if (introPhase === 0) {
+      setCurrentText("Подключение...");
+      timer = setTimeout(() => setIntroPhase(1), 5000);
+    } else if (introPhase === 1) {
+      playSound("ernie");
+      setCurrentText(
+        `Подключение установлено.\n\nСубъект: ${telegramUsername}`
+      );
+      timer = setTimeout(() => setIntroPhase(2), 5000);
+    } else if (introPhase === 2) {
+      setPhase("floor");
+      setCurrentText(
+        "Добро пожаловать в Башню. Я — ЭРНИ.\n\nЯ буду тебя... сопровождать."
+      );
+      timer = setTimeout(() => setIntroPhase(3), 8000);
+    } else if (introPhase === 3) {
+      playSound("glitch");
+      setCurrentText("ЭТАЖ 37");
+      setTimeout(() => {
+        setCurrentText("ЭТАЖ 1");
+      }, 300);
+      timer = setTimeout(() => setIntroPhase(4), 7000);
+    } else if (introPhase === 4) {
+      setCurrentText(
+        "Правила просты.\n\nПоднимайся. Отвечай. Выживай.\n\n...Хотя 'просты' — неправильное слово."
+      );
+      timer = setTimeout(() => setIntroPhase(5), 10000);
+    } else if (introPhase === 5) {
+      playSound("phone");
+      setIncomingCall(true);
+    } else if (introPhase === 6) {
+      localStorage.setItem("ernie_intro_seen", "true");
+      setIntroPhase(null);
+    }
+    return () => clearTimeout(timer);
+  }, [introPhase, telegramUsername]);
+
+  // Stats Logic
   let maxEnergyMult = 1;
   let costReduction = 0;
   let maxRiskPerCycle = 2;
@@ -632,7 +1445,6 @@ export default function ErnieGame() {
     !isIntroActive;
   const canRisk = energy >= 20 && riskUsedThisCycle < maxRiskPerCycle;
 
-  // --- ACTIONS ---
   const toggleMute = () => {
     isMuted = !isMuted;
     setMuted(isMuted);
@@ -652,11 +1464,27 @@ export default function ErnieGame() {
     setFloaters((p) => [...p, { id, text, color, x: "50%", y: "40%" }]);
     setTimeout(() => setFloaters((p) => p.filter((f) => f.id !== id)), 1000);
   };
-  const resetGame = () => {
+
+  const handleDeath = () => {
+    if (lives <= 0) {
+      setShowNoLives(true);
+      return;
+    }
+    setLives((l) => l - 1);
+    setDeaths((d) => d + 1);
+    localStorage.setItem("ernie_last_death_time", Date.now());
+    localStorage.setItem("ernie_lives", lives - 1);
     localStorage.setItem("ernie_echo", floor);
-    localStorage.clear();
-    window.location.reload();
-  }; // Save echo
+    setFloor(1);
+    setEnergy(100);
+    setKarma(0);
+    setPhase("floor");
+    playSound("error");
+    setTrialResult("💀 СМЕРТЬ. Осталось жизней: " + (lives - 1));
+  };
+  const resetGame = () => {
+    handleDeath();
+  };
   const debugJump = () => {
     const f = prompt("Прыжок на этаж (1-50):");
     const num = Number(f);
@@ -669,6 +1497,25 @@ export default function ErnieGame() {
       setFloor(num);
       setPhase("floor");
     }
+  };
+  const checkAchievements = () => {
+    const state = {
+      floor,
+      deaths,
+      karma,
+      relics,
+      fastAnswer: riddleTimer > 7,
+      riddleStreak,
+      totalRisk,
+    };
+    ACHIEVEMENTS_DB.forEach((ach) => {
+      if (!achievements.includes(ach.id) && ach.check(state)) {
+        setAchievements((p) => [...p, ach.id]);
+        setTrialResult(`🏆 ДОСТИЖЕНИЕ: ${ach.name}`);
+        playSound("success");
+        triggerFlash("green");
+      }
+    });
   };
   const checkContracts = (type, val) => {
     let completed = false;
@@ -698,22 +1545,7 @@ export default function ErnieGame() {
       setContracts([...newContracts, { ...fresh, id: Date.now() }]);
     }
   };
-
-  // Sentient Logic
-  const getErnieTone = () => {
-    if (karma < -30)
-      return "Чего ждешь, кусок органики? Лифт сам себя не поднимет.";
-    if (karma > 30)
-      return "Ваше присутствие в системе... терпимо. Продолжайте.";
-    if (energy < 20)
-      return "Твой пульс замедляется. Энергия на исходе. Выключить свет?";
-    if (floor === 1 && echoFloor > 0)
-      return `Опять ты? В прошлый раз ты застрял на ${echoFloor} этаже.`;
-    return "Системы в норме. Ожидание команд.";
-  };
-
   const selectRole = (rId) => {
-    // PSYCHO START LOGIC REPLACES STANDARD ROLE SELECT
     playSound("click");
     setRole(rId.toUpperCase());
     setIsIntroActive(true);
@@ -723,48 +1555,81 @@ export default function ErnieGame() {
       playSound("ernie");
     }, 3000);
     setTimeout(() => {
-      setCurrentText(getErnieTone());
+      setCurrentText(
+        getErnieFloorPhrase(floor, mood, karma, deaths, echoFloor)
+      );
       setIsIntroActive(false);
       setPhase("floor");
     }, 6000);
   };
-
   const answerCall = () => {
     playSound("click");
     setIncomingCall(false);
-    setActiveRiddle(RIDDLES[floor]);
+    if (introPhase === 5) {
+      setActiveRiddle(RIDDLES[1]);
+      setRiddleStartTime(Date.now());
+    } else {
+      setActiveRiddle(RIDDLES[floor]);
+      setRiddleStartTime(Date.now());
+    }
   };
-
   const handleRiddleAnswer = (isCorrect) => {
-    // Logic moved to handleVerdict for timer support
     if (isCorrect) handleVerdict("win");
     else handleVerdict("fail");
   };
-
   const handleVerdict = (res) => {
     setRiddleVerdict(res);
+    const timeTaken = (Date.now() - riddleStartTime) / 1000;
+    if (introPhase === 5) {
+      if (res === "win") {
+        playSound("success");
+        setTrialResult("Хм. Повезло.");
+        setTimeout(() => {
+          setActiveRiddle(null);
+          setRiddleVerdict(null);
+          setIntroPhase(6);
+        }, 2000);
+      } else {
+        playSound("glitch");
+        setTrialResult("ТЫ УЖЕ БЫЛ ЗДЕСЬ");
+        setTimeout(() => {
+          setTrialResult("");
+          setActiveRiddle(null);
+          setRiddleVerdict(null);
+          setIntroPhase(6);
+        }, 1500);
+      }
+      return;
+    }
+    if (timeTaken < 3) {
+      setFastAnswers((f) => f + 1);
+    }
     if (res === "win") {
       playSound("success");
       triggerFlash("green");
       spawnFloater("+30 EN", "#0f0");
       setEnergy((e) => Math.min(e + 30, max));
       setInfluence((i) => i + 2);
-      setTrialResult(activeRiddle.win);
-      modifyKarma(10);
+      setTrialResult(getCorrectPhrase(mood) + " " + activeRiddle.win);
+      modifyKarma(activeRiddle.karmaWin || 10);
+      setConsecutiveErrors(0);
+      setRiddleStreak((s) => s + 1);
+      checkAchievements();
     } else {
       playSound("error");
       triggerDamageFX();
       spawnFloater("-20 EN", "red");
       setEnergy((e) => Math.max(0, e - 20));
       setTrialResult(
-        res === "timeout"
-          ? activeRiddle.timeout || "ВРЕМЯ ВЫШЛО"
-          : activeRiddle.fail
+        getWrongPhrase(mood, consecutiveErrors) +
+          " " +
+          (res === "timeout" ? "ВРЕМЯ ВЫШЛО" : activeRiddle.fail)
       );
-      modifyKarma(-10);
+      modifyKarma(activeRiddle.karmaFail || -10);
+      setConsecutiveErrors((c) => c + 1);
+      setRiddleStreak(0);
     }
   };
-
   const useItem = (itemId) => {
     const itemDef = ITEMS[itemId];
     if (!itemDef) return;
@@ -836,7 +1701,6 @@ export default function ErnieGame() {
     }
     setShowBag(false);
   };
-
   const buyItem = (id, cost) => {
     if (influence >= cost) {
       playSound("buy");
@@ -849,12 +1713,12 @@ export default function ErnieGame() {
       triggerFlash("red");
     }
   };
-
   const handleRisk = () => {
     if (!canRisk) return;
     playSound("click");
     setEnergy((e) => Math.max(0, e - 20));
     setRiskUsedThisCycle((c) => c + 1);
+    setTotalRisk((t) => t + 1);
     if (Math.random() > 0.5) {
       playSound("success");
       setEnergy((e) => Math.min(e + 45, max));
@@ -870,7 +1734,6 @@ export default function ErnieGame() {
       spawnFloater("ПУСТО", "#666");
     }
   };
-
   const handleReboot = () => {
     playSound("click");
     setIsGlitchActive(false);
@@ -879,7 +1742,6 @@ export default function ErnieGame() {
     triggerFlash("green");
     checkContracts("glitch", 1);
   };
-
   const combatAction = (type) => {
     if (!bossData) return;
     playSound("click");
@@ -919,8 +1781,9 @@ export default function ErnieGame() {
       }
       setTrialResult("ПОБЕДА.");
       triggerFlash("green");
+      checkAchievements();
     } else {
-      const enemyDmg = bossData.damage;
+      const enemyDmg = Math.floor(bossData.damage * karmamod.enemyDmgMult);
       setEnergy((e) => Math.max(0, e - enemyDmg));
       triggerDamageFX();
       triggerFlash("red");
@@ -931,12 +1794,12 @@ export default function ErnieGame() {
       }));
     }
   };
-
   const ascend = () => {
     if (!canAscend) return;
     playSound("click");
     const nextFloor = floor + 1;
     checkContracts("floor", nextFloor);
+    checkAchievements();
     if (getZone(floor).name !== getZone(nextFloor).name) {
       setZoneNotification(getZone(nextFloor).name);
       setTimeout(() => setZoneNotification(null), 3000);
@@ -945,6 +1808,25 @@ export default function ErnieGame() {
     setEnergy((e) => e - cost);
     setTrialResult(null);
     setRiskUsedThisCycle(0);
+    if (
+      Math.random() < 0.3 &&
+      floor > 5 &&
+      !ghostMessage &&
+      !bossData &&
+      !activeRiddle
+    ) {
+      const nearby = GHOST_MESSAGES.filter(
+        (g) => Math.abs(g.floor - floor) <= 2
+      );
+      if (nearby.length > 0) {
+        const ghost = nearby[Math.floor(Math.random() * nearby.length)];
+        setTimeout(() => {
+          setGhostMessage(ghost);
+          playSound("glitch");
+          setTimeout(() => setGhostMessage(null), 5000);
+        }, 2000);
+      }
+    }
     const rand = Math.random();
     if (
       rand < 0.15 &&
@@ -975,10 +1857,11 @@ export default function ErnieGame() {
     setTimeout(() => {
       setFloor((f) => Math.min(f + 1, 50));
       setPhase("floor");
-      setCurrentText(getErnieTone());
+      setCurrentText(
+        getErnieFloorPhrase(nextFloor, mood, karma, deaths, echoFloor)
+      );
     }, 2000);
   };
-
   const handleDescent = () => {
     setFloor((f) => Math.max(1, f - 5));
     setEnergy(30);
@@ -1049,55 +1932,88 @@ export default function ErnieGame() {
     }
   };
 
-  // --- LOGIC: CENTRALIZED EVENT CHECKER ---
   useEffect(() => {
-    if (floor === 50) {
+    if (floor === 50 && !showEnding && endingType === null) {
+      if (karma >= 30) setEndingType("light");
+      else if (karma <= -30) setEndingType("dark");
+      else setEndingType("gray");
       setShowEnding(true);
       return;
     }
-    // BOSS (10, 20...)
-    if (floor % 10 === 0 && floor > 1 && !bossData) {
+    if (floor % 10 === 0 && floor > 1 && !bossData && !showEnding) {
       setTimeout(() => {
         playSound("alarm");
         const difficultyMult = 1 + cycle * 0.5;
+        const baseHp = 100 * difficultyMult * karmamod.enemyHpMult;
+        const baseDmg = 10 * difficultyMult * karmamod.enemyDmgMult;
         setBossData({
           ...ENEMIES.BOSS,
-          hp: 100 * difficultyMult,
-          maxHp: 100 * difficultyMult,
-          damage: Math.floor(10 * difficultyMult),
+          hp: baseHp,
+          maxHp: baseHp,
+          damage: Math.floor(baseDmg),
           log: ["ОБНАРУЖЕНА УГРОЗА."],
         });
       }, 1000);
       return;
     }
-    // MERCHANT (9, 19...)
-    if ((floor + 1) % 10 === 0 && floor > 1) {
+    if ((floor + 1) % 10 === 0 && floor > 1 && !showEnding) {
       setTimeout(() => setShowMerchant(true), 500);
     }
-    // RIDDLES & CALLS (5, 15...) - TRIGGER CALL FIRST
     if (
-      (floor === 5 ||
+      (floor === 3 ||
+        floor === 5 ||
+        floor === 7 ||
+        floor === 10 ||
+        floor === 12 ||
         floor === 15 ||
+        floor === 17 ||
+        floor === 19 ||
+        floor === 22 ||
         floor === 25 ||
+        floor === 27 ||
+        floor === 30 ||
+        floor === 32 ||
+        floor === 33 ||
         floor === 35 ||
-        floor === 45) &&
+        floor === 37 ||
+        floor === 38 ||
+        floor === 40 ||
+        floor === 42 ||
+        floor === 45 ||
+        floor === 47 ||
+        floor === 49) &&
       RIDDLES[floor] &&
       !activeRiddle &&
       !incomingCall &&
-      !riddleVerdict
+      !riddleVerdict &&
+      introPhase === null &&
+      !callsCompleted.includes(floor)
     ) {
       setTimeout(() => {
         playSound("phone");
         setIncomingCall(true);
       }, 500);
     }
-  }, [floor]);
+  }, [
+    floor,
+    showEnding,
+    endingType,
+    bossData,
+    activeRiddle,
+    incomingCall,
+    riddleVerdict,
+    introPhase,
+    cycle,
+    karmamod,
+    callsCompleted,
+  ]);
 
-  // Logic: Timer
   useEffect(() => {
     let interval;
     if (activeRiddle && !riddleVerdict) {
-      setRiddleTimer(10);
+      const baseTimer = 10;
+      const adjustedTimer = baseTimer + karmamod.timerBonus;
+      setRiddleTimer(adjustedTimer);
       interval = setInterval(() => {
         setRiddleTimer((p) => {
           if (p <= 0.1) {
@@ -1111,7 +2027,6 @@ export default function ErnieGame() {
     }
     return () => clearInterval(interval);
   }, [activeRiddle, riddleVerdict]);
-
   useEffect(() => {
     if (
       energy <= 0 &&
@@ -1121,13 +2036,23 @@ export default function ErnieGame() {
       !activeEvent &&
       !activeRiddle &&
       !incomingCall &&
-      !isIntroActive
+      !isIntroActive &&
+      !showEnding
     ) {
+      handleDeath();
       setPhase("emergency");
       triggerFlash("red");
     }
-  }, [energy, phase, role, bossData, activeEvent, activeRiddle, incomingCall]);
-
+  }, [
+    energy,
+    phase,
+    role,
+    bossData,
+    activeEvent,
+    activeRiddle,
+    incomingCall,
+    showEnding,
+  ]);
   useEffect(() => {
     if (role) {
       localStorage.setItem("ernie_floor", floor);
@@ -1141,6 +2066,16 @@ export default function ErnieGame() {
       localStorage.setItem("ernie_upgrades", JSON.stringify(upgrades));
       localStorage.setItem("ernie_cycle", cycle);
       localStorage.setItem("ernie_echo", floor);
+      localStorage.setItem("ernie_deaths", deaths);
+      localStorage.setItem("ernie_achievements", JSON.stringify(achievements));
+      localStorage.setItem("ernie_riddle_streak", riddleStreak);
+      localStorage.setItem("ernie_total_risk", totalRisk);
+      localStorage.setItem(
+        "ernie_calls_completed",
+        JSON.stringify(callsCompleted)
+      );
+      localStorage.setItem("ernie_lives", lives);
+      localStorage.setItem("ernie_player_cards", JSON.stringify(playerCards));
     }
   }, [
     floor,
@@ -1153,18 +2088,550 @@ export default function ErnieGame() {
     upgrades,
     cycle,
     contracts,
+    deaths,
+    achievements,
+    riddleStreak,
+    totalRisk,
+    callsCompleted,
+    lives,
+    playerCards,
   ]);
-
   useEffect(() => {
     let txt = "";
     if (bossData) txt = bossData.text;
     else if (isGlitchActive) txt = "⚠ ОШИБКА ⚠";
     else if (phase === "emergency") txt = "СБОЙ СИСТЕМЫ.";
-    else txt = trialResult || getErnieTone();
+    else if (introPhase === null)
+      txt =
+        trialResult ||
+        getErnieFloorPhrase(floor, mood, karma, deaths, echoFloor);
     setCurrentText(txt);
-  }, [floor, trialResult, phase, isGlitchActive, bossData]);
+  }, [floor, trialResult, phase, isGlitchActive, bossData, mood, introPhase]);
 
-  if (!role) {
+  // --- SUB-COMPONENTS FOR ENDINGS ---
+  const LightEnding = () => {
+    const [phase, setPhase] = useState(0);
+    useEffect(() => {
+      const timers = [
+        setTimeout(() => setPhase(1), 2000),
+        setTimeout(() => setPhase(2), 5000),
+        setTimeout(() => setPhase(3), 10000),
+        setTimeout(() => setPhase(4), 13000),
+      ];
+      return () => timers.forEach(clearTimeout);
+    }, []);
+    const handleChoice = (choice) => {
+      playSound("click");
+      if (choice === "act2") {
+        alert("АКТ 2: БЕЗДНА откроется в следующем обновлении!");
+        setShowEnding(false);
+      } else if (choice === "newgame") {
+        setCycle((c) => c + 1);
+        setFloor(1);
+        setEnergy(100);
+        setKarma(0);
+        setDeaths(0);
+        setShowEnding(false);
+        setEndingType(null);
+        setCallsCompleted([]);
+      } else if (choice === "stay") {
+        setShowEnding(false);
+      }
+    };
+    return (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            phase >= 2
+              ? `rgba(255,255,255,${Math.min((phase - 2) * 0.2, 0.9)})`
+              : "#000",
+          transition: "background 3s ease",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10000,
+        }}
+      >
+        {" "}
+        <div style={{ textAlign: "center", padding: 40, maxWidth: "90%" }}>
+          {" "}
+          {phase < 4 && (
+            <>
+              {" "}
+              {phase >= 1 && (
+                <div
+                  style={{
+                    fontSize: 16,
+                    color: phase >= 2 ? "#333" : "#ccc",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  Ты дошёл. Я... не ожидал.
+                </div>
+              )}{" "}
+              {phase >= 3 && (
+                <div
+                  style={{
+                    fontSize: 20,
+                    color: "#000",
+                    fontWeight: "bold",
+                    marginTop: 20,
+                  }}
+                >
+                  Спасибо. Хочешь узнать что дальше?
+                </div>
+              )}{" "}
+            </>
+          )}{" "}
+          {phase >= 4 && (
+            <div>
+              {" "}
+              <div style={{ fontSize: 11, color: "#333", marginBottom: 25 }}>
+                Этажей: {floor} | Смертей: {deaths} | Карма: +{karma}
+              </div>{" "}
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 12 }}
+              >
+                {" "}
+                <button
+                  onClick={() => handleChoice("act2")}
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(233,69,96,0.3), rgba(233,69,96,0.5))",
+                    border: "2px solid #E94560",
+                    color: "#8B0000",
+                    padding: 18,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    borderRadius: 4,
+                  }}
+                >
+                  ⬇️ АКТ 2: БЕЗДНА
+                </button>{" "}
+                <button
+                  onClick={() => handleChoice("newgame")}
+                  style={{
+                    background: "rgba(0,0,0,0.1)",
+                    border: "1px solid #666",
+                    color: "#333",
+                    padding: 15,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    borderRadius: 4,
+                  }}
+                >
+                  🔄 NEW GAME+ (Цикл {cycle + 2})
+                </button>{" "}
+                <button
+                  onClick={() => handleChoice("stay")}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #999",
+                    color: "#666",
+                    padding: 12,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    borderRadius: 4,
+                  }}
+                >
+                  🏆 ОСТАТЬСЯ НА 50
+                </button>{" "}
+              </div>{" "}
+            </div>
+          )}{" "}
+        </div>{" "}
+      </div>
+    );
+  };
+  const GrayEnding = () => {
+    const [phase, setPhase] = useState(0);
+    useEffect(() => {
+      const timers = [
+        setTimeout(() => setPhase(1), 2000),
+        setTimeout(() => setPhase(2), 5000),
+        setTimeout(() => setPhase(3), 7000),
+      ];
+      return () => timers.forEach(clearTimeout);
+    }, []);
+    const handleChoice = (choice) => {
+      playSound("click");
+      if (choice === "act2") {
+        alert("АКТ 2: БЕЗДНА откроется в следующем обновлении!");
+        setShowEnding(false);
+      } else if (choice === "newgame") {
+        setCycle((c) => c + 1);
+        setFloor(1);
+        setEnergy(100);
+        setKarma(0);
+        setDeaths(0);
+        setShowEnding(false);
+        setEndingType(null);
+        setCallsCompleted([]);
+      } else if (choice === "stay") {
+        setShowEnding(false);
+      }
+    };
+    return (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "#000",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10000,
+          animation: phase === 2 ? "glitchFlash 0.3s 3" : "none",
+        }}
+      >
+        {" "}
+        <div style={{ textAlign: "center", padding: 40, maxWidth: "90%" }}>
+          {" "}
+          {phase < 3 && (
+            <>
+              {" "}
+              {phase >= 1 && (
+                <div style={{ fontSize: 16, color: "#ccc", lineHeight: 1.6 }}>
+                  Вот и всё. Или нет?
+                </div>
+              )}{" "}
+            </>
+          )}{" "}
+          {phase >= 3 && (
+            <div>
+              {" "}
+              <div style={{ fontSize: 14, color: "#666", marginBottom: 25 }}>
+                Башня — это не всё. Есть и другое.
+              </div>{" "}
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 12 }}
+              >
+                {" "}
+                <button
+                  onClick={() => handleChoice("act2")}
+                  style={{
+                    background: "rgba(233,69,96,0.2)",
+                    border: "2px solid #E94560",
+                    color: "#E94560",
+                    padding: 18,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    borderRadius: 4,
+                  }}
+                >
+                  ⬇️ АКТ 2: БЕЗДНА
+                </button>{" "}
+                <button
+                  onClick={() => handleChoice("newgame")}
+                  style={{
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid #666",
+                    color: "#ccc",
+                    padding: 15,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    borderRadius: 4,
+                  }}
+                >
+                  🔄 NEW GAME+ (Цикл {cycle + 2})
+                </button>{" "}
+                <button
+                  onClick={() => handleChoice("stay")}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #444",
+                    color: "#888",
+                    padding: 12,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    borderRadius: 4,
+                  }}
+                >
+                  🏆 ОСТАТЬСЯ НА 50
+                </button>{" "}
+              </div>{" "}
+            </div>
+          )}{" "}
+        </div>{" "}
+      </div>
+    );
+  };
+  const DarkEnding = () => {
+    const [phase, setPhase] = useState(0);
+    useEffect(() => {
+      const timers = [
+        setTimeout(() => setPhase(1), 2000),
+        setTimeout(() => setPhase(2), 5000),
+        setTimeout(() => setPhase(3), 8000),
+        setTimeout(() => setPhase(4), 11000),
+      ];
+      return () => timers.forEach(clearTimeout);
+    }, []);
+    const handleChoice = (choice) => {
+      playSound("click");
+      if (choice === "act2") {
+        alert(
+          "АКТ 2: БЕЗДНА (Режим надзирателя) откроется в следующем обновлении!"
+        );
+        setShowEnding(false);
+      } else if (choice === "newgame") {
+        setCycle((c) => c + 1);
+        setFloor(1);
+        setEnergy(100);
+        setKarma(0);
+        setDeaths(0);
+        setShowEnding(false);
+        setEndingType(null);
+        setCallsCompleted([]);
+      } else if (choice === "stay") {
+        setShowEnding(false);
+      } else if (choice === "ernie") {
+        alert("РЕЖИМ ERNIE будет доступен в Акте 2!");
+        setShowEnding(false);
+      }
+    };
+    return (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            phase >= 2
+              ? `rgba(139,0,0,${Math.min((phase - 2) * 0.15, 0.7)})`
+              : "#000",
+          transition: "background 3s ease",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10000,
+        }}
+      >
+        {" "}
+        <div style={{ textAlign: "center", padding: 40, maxWidth: "90%" }}>
+          {" "}
+          {phase < 4 && (
+            <>
+              {" "}
+              {phase >= 1 && (
+                <div style={{ fontSize: 16, color: "#ccc", lineHeight: 1.6 }}>
+                  Каждый, кого ты уничтожил...
+                </div>
+              )}{" "}
+              {phase >= 3 && (
+                <div
+                  style={{
+                    fontSize: 16,
+                    color: "#ff6b6b",
+                    lineHeight: 1.6,
+                    marginTop: 15,
+                  }}
+                >
+                  Теперь ты здесь работаешь. Но есть и другая работа...
+                </div>
+              )}{" "}
+            </>
+          )}{" "}
+          {phase >= 4 && (
+            <div>
+              {" "}
+              <div style={{ fontSize: 11, color: "#ffcccc", marginBottom: 25 }}>
+                Смертей: {deaths} | Карма: {karma}
+              </div>{" "}
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 12 }}
+              >
+                {" "}
+                <button
+                  onClick={() => handleChoice("act2")}
+                  style={{
+                    background: "rgba(139,0,0,0.3)",
+                    border: "2px solid #8B0000",
+                    color: "#ff6b6b",
+                    padding: 18,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    borderRadius: 4,
+                  }}
+                >
+                  ⬇️ АКТ 2: БЕЗДНА
+                </button>{" "}
+                <button
+                  onClick={() => handleChoice("ernie")}
+                  style={{
+                    background: "rgba(233,69,96,0.2)",
+                    border: "1px solid #E94560",
+                    color: "#E94560",
+                    padding: 15,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    borderRadius: 4,
+                  }}
+                >
+                  👁️ РЕЖИМ ERNIE
+                </button>{" "}
+                <button
+                  onClick={() => handleChoice("newgame")}
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid #666",
+                    color: "#ccc",
+                    padding: 15,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    borderRadius: 4,
+                  }}
+                >
+                  🔄 NEW GAME+ (Цикл {cycle + 2})
+                </button>{" "}
+                <button
+                  onClick={() => handleChoice("stay")}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #444",
+                    color: "#888",
+                    padding: 12,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    borderRadius: 4,
+                  }}
+                >
+                  🏆 ОСТАТЬСЯ НА 50
+                </button>{" "}
+              </div>{" "}
+            </div>
+          )}{" "}
+        </div>{" "}
+      </div>
+    );
+  };
+
+  // --- INTRO SCREEN ---
+  if (introPhase !== null && introPhase < 5) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          margin: "0 auto",
+          height: "100dvh",
+          background: "#000",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
+          body { font-family: 'JetBrains Mono', monospace; background: #000; }
+          @keyframes glitchFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; transform: translateX(2px); } }
+          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+          @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+          .crt::before { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 9999; background-size: 100% 2px, 3px 100%; pointer-events: none; opacity: 0.5; }
+        `}</style>
+        {introPhase >= 2 && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: `url(${IMG.CABIN})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              filter: "brightness(0.3)",
+              opacity: introPhase === 2 ? 0 : 1,
+              transition: "opacity 2s ease-in",
+              animation: introPhase === 2 ? "fadeIn 2s forwards" : "none",
+            }}
+          />
+        )}
+        <div
+          className="crt"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 9999,
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "relative",
+            zIndex: 10,
+            textAlign: "center",
+            padding: 40,
+            maxWidth: "90%",
+          }}
+        >
+          {introPhase === 3 ? (
+            <div
+              style={{
+                fontSize: 64,
+                fontWeight: "bold",
+                color: "#E94560",
+                textShadow: "0 0 20px #E94560",
+                animation: "glitchFlash 0.3s infinite",
+              }}
+            >
+              {displayed}
+            </div>
+          ) : (
+            <div
+              style={{
+                fontSize: introPhase === 0 ? 14 : 16,
+                color: introPhase === 1 ? "#00FFFF" : "#ccc",
+                lineHeight: 1.6,
+                whiteSpace: "pre-line",
+                textShadow: introPhase === 1 ? "0 0 10px #00FFFF" : "none",
+              }}
+            >
+              {displayed}
+            </div>
+          )}
+          {!done && (
+            <span
+              style={{
+                display: "inline-block",
+                width: 8,
+                height: 16,
+                background: "#E94560",
+                marginLeft: 4,
+                animation: "blink 1s infinite",
+              }}
+            />
+          )}
+        </div>
+        <button
+          onClick={() => {
+            localStorage.setItem("ernie_intro_seen", "true");
+            setIntroPhase(null);
+          }}
+          style={{
+            position: "absolute",
+            top: 20,
+            right: 20,
+            background: "transparent",
+            border: "1px solid #333",
+            color: "#666",
+            padding: "5px 10px",
+            fontSize: 8,
+            cursor: "pointer",
+            zIndex: 20,
+          }}
+        >
+          [ПРОПУСТИТЬ]
+        </button>
+      </div>
+    );
+  }
+
+  // --- ROLE SELECT ---
+  if (!role && introPhase === null) {
     return (
       <div
         style={{
@@ -1233,7 +2700,9 @@ export default function ErnieGame() {
         @keyframes fall { 0% { transform: translateY(-10px) translateX(0); opacity: 0; } 50% { opacity: 0.5; } 100% { transform: translateY(100vh) translateX(20px); opacity: 0; } }
         @keyframes slideBg { from { background-position: center 0px; } to { background-position: center 50px; } }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        .crt::before { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 9999; background-size: 100% 2px, 3px 100%; pointer-events: none; }
+        @keyframes ernieSlideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .crt::before { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 9999; background-size: 100% 2px, 3px 100%; pointer-events: none; opacity: ${karmamod.crtIntensity}; }
       `}</style>
 
       <div
@@ -1246,6 +2715,7 @@ export default function ErnieGame() {
         }}
       />
       <ParticleSystem />
+      {/* 💡 VISUAL TWEAK: Increased base brightness of the background image */}
       <div
         style={{
           position: "absolute",
@@ -1253,7 +2723,13 @@ export default function ErnieGame() {
           backgroundImage: `url(${IMG[getZone(floor).img]})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
-          filter: `brightness(${Math.max(0.1, 0.5 - floor / 100)})`,
+          filter: `brightness(${Math.max(0.2, 0.65 - floor / 100)}) ${
+            karmamod.overlay === "light"
+              ? "saturate(1.2)"
+              : karmamod.overlay === "dark"
+              ? "saturate(0.5) hue-rotate(180deg)"
+              : ""
+          }`,
           zIndex: 1,
           animation: phase === "ascending" ? "slideBg 2s ease-in-out" : "none",
         }}
@@ -1287,34 +2763,6 @@ export default function ErnieGame() {
         <Floater key={f.id} {...f} />
       ))}
 
-      <div
-        style={{
-          position: "absolute",
-          top: 70,
-          left: 20,
-          zIndex: 40,
-          width: 120,
-        }}
-      >
-        <div style={{ fontSize: 8, color: "#666", marginBottom: 5 }}>
-          ЗАДАНИЯ:
-        </div>
-        {contracts.map((c) => (
-          <div
-            key={c.id}
-            style={{
-              fontSize: 9,
-              color: "#ccc",
-              marginBottom: 3,
-              borderLeft: "2px solid #E0C068",
-              paddingLeft: 5,
-            }}
-          >
-            • {c.text}
-          </div>
-        ))}
-      </div>
-
       {!isGlitchActive &&
         !bossData &&
         !activeEvent &&
@@ -1329,22 +2777,102 @@ export default function ErnieGame() {
               zIndex: 40,
               display: "flex",
               justifyContent: "space-between",
+              alignItems: "center",
             }}
           >
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <EnergyPulse
-                energy={energy}
-                max={max}
-                influence={influence}
-                cycle={cycle}
-              />
-              <div style={{ fontSize: 9, color: "#666", marginTop: 4 }}>
-                РОЛЬ: {role}
+              <div
+                style={{
+                  fontSize: 32,
+                  color: "#E94560",
+                  fontWeight: "bold",
+                  textShadow: "0 0 10px #E94560",
+                }}
+              >
+                {floor}
+              </div>
+              <div style={{ fontSize: 9, color: "#666", letterSpacing: 1 }}>
+                ЭТАЖ
               </div>
             </div>
-            <div onClick={() => setShowFloors(true)} style={S.floorText}>
-              <span style={{ fontSize: 20 }}>🗺️</span>
-              <div style={{ fontSize: 9, letterSpacing: 2 }}>КАРТА</div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: 5,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 11, color: "#666" }}>⚡</span>
+                <div
+                  style={{
+                    width: 70,
+                    height: 8,
+                    background: "#111",
+                    borderRadius: 4,
+                    border: "1px solid #333",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.max(0, Math.min(1, energy / max)) * 100}%`,
+                      height: "100%",
+                      background: `linear-gradient(90deg, ${
+                        energy / max < 0.2
+                          ? "#FF0000"
+                          : energy / max < 0.5
+                          ? "#E94560"
+                          : "#666"
+                      }, #fff)`,
+                      transition: "width 0.5s ease",
+                    }}
+                  />
+                </div>
+                <span
+                  style={{ fontSize: 10, color: "#ccc", fontWeight: "bold" }}
+                >
+                  {Math.floor(energy)}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  marginTop: 5,
+                }}
+              >
+                <span style={{ fontSize: 9, color: "#666" }}>❤️</span>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: lives <= 1 ? "#E94560" : "#ccc",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {lives}/5
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowMenu(true);
+                  playSound("click");
+                }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #444",
+                  color: "#888",
+                  padding: "5px 10px",
+                  fontSize: 10,
+                  cursor: "pointer",
+                  borderRadius: 4,
+                  marginTop: 5,
+                }}
+              >
+                🗺️ МЕНЮ
+              </button>
             </div>
           </div>
         )}
@@ -1356,6 +2884,120 @@ export default function ErnieGame() {
           </div>
           <div style={{ color: "#fff", fontSize: 24, fontWeight: "bold" }}>
             {zoneNotification}
+          </div>
+        </div>
+      )}
+
+      {ghostMessage && (
+        <div
+          style={{
+            position: "absolute",
+            top: "30%",
+            left: 20,
+            right: 20,
+            zIndex: 60,
+            background: "rgba(0,0,0,0.9)",
+            border:
+              ghostMessage.karma < 0 ? "1px solid #8B0000" : "1px solid #444",
+            padding: 15,
+            borderLeft:
+              ghostMessage.karma < 0 ? "3px solid #8B0000" : "3px solid #666",
+            animation: "fadeIn 0.5s ease-in",
+          }}
+        >
+          <div style={{ fontSize: 8, color: "#666", marginBottom: 5 }}>
+            👻 НАДПИСЬ НА СТЕНЕ
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: ghostMessage.karma < -20 ? "#ff6b6b" : "#ccc",
+              fontStyle: "italic",
+              marginBottom: 8,
+            }}
+          >
+            "{ghostMessage.text}"
+          </div>
+          <div style={{ fontSize: 8, color: "#555" }}>
+            — Аноним, Этаж {ghostMessage.floor}{" "}
+            {ghostMessage.karma !== 0 && (
+              <span
+                style={{
+                  marginLeft: 10,
+                  color: ghostMessage.karma > 0 ? "#4a8a4a" : "#8a3a3a",
+                }}
+              >
+                Карма: {ghostMessage.karma > 0 ? "+" : ""}
+                {ghostMessage.karma}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showAchievements && (
+        <div
+          style={S.overlay}
+          onClick={() => {
+            setShowAchievements(false);
+            playSound("click");
+          }}
+        >
+          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 20, color: "#E0C068" }}>
+              🏆 ДОСТИЖЕНИЯ ({achievements.length}/{ACHIEVEMENTS_DB.length})
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+                maxHeight: "60vh",
+                overflow: "auto",
+              }}
+            >
+              {ACHIEVEMENTS_DB.map((ach) => {
+                const unlocked = achievements.includes(ach.id);
+                return (
+                  <div
+                    key={ach.id}
+                    style={{
+                      background: "#222",
+                      border: "1px solid #333",
+                      borderRadius: 4,
+                      padding: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      opacity: unlocked ? 1 : 0.3,
+                    }}
+                  >
+                    <div style={{ fontSize: 24 }}>
+                      {unlocked ? ach.icon : "🔒"}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: unlocked ? "#fff" : "#666",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {ach.name}
+                    </div>
+                    <div style={{ fontSize: 8, color: "#888" }}>{ach.desc}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => {
+                setShowAchievements(false);
+                playSound("click");
+              }}
+              style={S.closeBagBtn}
+            >
+              ЗАКРЫТЬ
+            </button>
           </div>
         </div>
       )}
@@ -1406,20 +3048,437 @@ export default function ErnieGame() {
         </div>
       )}
 
-      {/* NEW CALL SCREEN */}
+      {showCardCollection && (
+        <div
+          style={S.overlay}
+          onClick={() => {
+            setShowCardCollection(false);
+            setSelectedCard(null);
+          }}
+        >
+          <div style={S.bagContent} onClick={(e) => e.stopPropagation()}>
+            <div
+              style={{ marginBottom: 20, color: "#E94560", letterSpacing: 2 }}
+            >
+              🃏 МОЯ КОЛЛЕКЦИЯ ({playerCards.length}/7)
+            </div>
+            {/* 🃏 UI TWEAK: Centered grid and improved styling for locked cards */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 10,
+                marginBottom: 20,
+                justifyItems: "center",
+              }}
+            >
+              {playerCards.map((cardId) => {
+                const card = CARDS_DATABASE[cardId];
+                return (
+                  <div
+                    key={cardId}
+                    onClick={() => setSelectedCard(card)}
+                    style={{
+                      width: "100%",
+                      aspectRatio: "2/3",
+                      background: `url(${card.image})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                      border: `3px solid ${card.rarityColor}`,
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      position: "relative",
+                      boxShadow:
+                        selectedCard?.id === cardId
+                          ? `0 0 15px ${card.rarityColor}`
+                          : "0 4px 8px rgba(0,0,0,0.5)",
+                      transition: "all 0.3s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        background: "rgba(0,0,0,0.85)",
+                        padding: 6,
+                        fontSize: 8,
+                        color: "#fff",
+                        textAlign: "center",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {card.name}
+                    </div>
+                  </div>
+                );
+              })}
+              {Array.from({ length: 7 - playerCards.length }).map((_, i) => (
+                <div
+                  key={`locked_${i}`}
+                  style={{
+                    width: "100%",
+                    aspectRatio: "2/3",
+                    background: "#222",
+                    border: "2px solid #E0C068",
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 32,
+                    color: "#E0C068",
+                    opacity: 0.5,
+                  }}
+                >
+                  🔒
+                </div>
+              ))}
+            </div>
+            {selectedCard && (
+              <div
+                style={{
+                  background: "#111",
+                  border: `2px solid ${selectedCard.rarityColor}`,
+                  borderRadius: 8,
+                  padding: 15,
+                  marginBottom: 15,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 14,
+                    color: "#fff",
+                    fontWeight: "bold",
+                    marginBottom: 8,
+                  }}
+                >
+                  {selectedCard.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "#888",
+                    fontStyle: "italic",
+                    marginBottom: 10,
+                  }}
+                >
+                  "{selectedCard.lore}"
+                </div>
+                <div style={{ fontSize: 9, color: "#ccc", marginBottom: 10 }}>
+                  {selectedCard.description}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    fontSize: 9,
+                    marginBottom: 15,
+                  }}
+                >
+                  <div style={{ color: selectedCard.rarityColor }}>
+                    ● {selectedCard.rarity.toUpperCase()}
+                  </div>
+                  <div style={{ color: "#E0C068" }}>
+                    ⭐ {selectedCard.cost} Stars
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowCardCollection(false);
+                    setSelectedCard(null);
+                    useCard(selectedCard.id);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 12,
+                    background: `linear-gradient(135deg, ${selectedCard.rarityColor}33, ${selectedCard.rarityColor}55)`,
+                    border: `2px solid ${selectedCard.rarityColor}`,
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    borderRadius: 4,
+                  }}
+                >
+                  ⚡ ИСПОЛЬЗОВАТЬ
+                </button>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setShowCardCollection(false);
+                setSelectedCard(null);
+              }}
+              style={S.closeBagBtn}
+            >
+              ЗАКРЫТЬ
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- PATCH v250: MINI-GAMES --- */}
+      {cardMinigame === "mirror_maze" && (
+        <div style={S.overlay}>
+          <div style={S.bagContent}>
+            <div style={{ marginBottom: 20, color: "#FFFF00" }}>
+              🪞 ЗЕРКАЛЬНЫЙ ЛАБИРИНТ
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "#ccc",
+                marginBottom: 15,
+                textAlign: "center",
+              }}
+            >
+              Найди настоящего себя
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#888",
+                marginBottom: 20,
+                textAlign: "center",
+              }}
+            >
+              Попыток: {mirrorAttempts}/3
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 10,
+                marginBottom: 20,
+                justifyItems: "center",
+              }}
+            >
+              {mirrorPositions.map((pos, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleMirrorClick(index)}
+                  style={{
+                    aspectRatio: "1",
+                    width: "100%",
+                    background: "linear-gradient(135deg, #1a1a1a, #2a2a2a)",
+                    border: "2px solid #666",
+                    borderRadius: 8,
+                    fontSize: 32,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  🪞
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 9, color: "#666", textAlign: "center" }}>
+              Один из этих зеркал — настоящее
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cardMinigame === "flight_collect" && (
+        <div style={S.overlay}>
+          <div style={S.bagContent}>
+            <div style={{ marginBottom: 15, color: "#00FF00" }}>
+              🪽 РЕЖИМ ПОЛЁТА
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "#ccc",
+                marginBottom: 10,
+                textAlign: "center",
+              }}
+            >
+              Время: {flightTimer}с
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#E0C068",
+                marginBottom: 15,
+                textAlign: "center",
+              }}
+            >
+              Собрано: {flightCollected}/5
+            </div>
+            <div
+              style={{
+                position: "relative",
+                width: "100%",
+                height: 300,
+                background: "linear-gradient(to bottom, #001a33, #000)",
+                border: "2px solid #444",
+                borderRadius: 8,
+                overflow: "hidden",
+                marginBottom: 15,
+              }}
+            >
+              {flightItems.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => collectFlightItem(item.id)}
+                  style={{
+                    position: "absolute",
+                    left: `${item.x}%`,
+                    top: `${item.y}%`,
+                    width: 30,
+                    height: 30,
+                    background: "radial-gradient(circle, #FFD700, #FFA500)",
+                    borderRadius: "50%",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 16,
+                    animation: "float 2s ease-in-out infinite",
+                  }}
+                >
+                  ⭐
+                </div>
+              ))}
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 20,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  fontSize: 24,
+                }}
+              >
+                🪽
+              </div>
+            </div>
+            <div style={{ fontSize: 9, color: "#666", textAlign: "center" }}>
+              Нажимай на звёзды чтобы собрать
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cardMinigame === "memory_story" && memoryStory && (
+        <div style={S.overlay}>
+          <div style={S.bagContent}>
+            <div style={{ marginBottom: 20, color: "#00FF00" }}>
+              💭 ВОСПОМИНАНИЕ
+            </div>
+            <div
+              style={{
+                background: "#111",
+                border: "1px solid #444",
+                borderRadius: 8,
+                padding: 15,
+                marginBottom: 20,
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#ccc", marginBottom: 10 }}>
+                Игрок:{" "}
+                <span style={{ color: "#E94560" }}>{memoryStory.name}</span>
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  color: "#fff",
+                  fontStyle: "italic",
+                  marginBottom: 15,
+                }}
+              >
+                "{memoryStory.lastWords}"
+              </div>
+              <div style={{ fontSize: 10, color: "#888" }}>
+                Погиб на{" "}
+                <span style={{ color: "#E94560" }}>
+                  этаже {memoryStory.floor}
+                </span>
+              </div>
+              <div style={{ fontSize: 10, color: "#888" }}>
+                Убийца:{" "}
+                <span style={{ color: "red" }}>{memoryStory.killer}</span>
+              </div>
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "#E0C068",
+                marginBottom: 15,
+                textAlign: "center",
+              }}
+            >
+              💔 Отомстить?
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => {
+                  setMemoryQuest({
+                    targetFloor: memoryStory.floor,
+                    targetEnemy: memoryStory.killer,
+                    reward: 50,
+                  });
+                  setKarma((k) => k + 10);
+                  setTrialResult(
+                    "Квест принят: Дойди до этажа " + memoryStory.floor
+                  );
+                  finishCard();
+                }}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  background: "rgba(233,69,96,0.3)",
+                  border: "2px solid #E94560",
+                  color: "#E94560",
+                  fontSize: 11,
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  borderRadius: 4,
+                }}
+              >
+                ПРИНЯТЬ КВЕСТ
+              </button>
+              <button
+                onClick={() => {
+                  setKarma((k) => k + 10);
+                  setTrialResult("+10 Карма (эмпатия)");
+                  finishCard();
+                }}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  background: "transparent",
+                  border: "1px solid #666",
+                  color: "#888",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  borderRadius: 4,
+                }}
+              >
+                ПРОПУСТИТЬ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {incomingCall && (
         <div style={S.bossOverlay}>
+          {/* 🎨 UI TWEAK: Muted colors for incoming call window */}
           <div
             style={{
               ...S.bossWindow,
-              borderColor: "#ffb000",
-              background: "#110f00",
+              borderColor: "#C0A060",
+              background: "#1a150a",
             }}
           >
             <div
               style={{
                 ...S.bossHeader,
-                color: "#ffb000",
+                color: "#C0A060",
                 animation: "blink 1s infinite",
               }}
             >
@@ -1429,7 +3488,7 @@ export default function ErnieGame() {
               style={{
                 padding: 20,
                 textAlign: "center",
-                color: "#cc8800",
+                color: "#B09050",
                 fontFamily: "monospace",
                 fontSize: 12,
               }}
@@ -1443,8 +3502,8 @@ export default function ErnieGame() {
               onClick={answerCall}
               style={{
                 ...S.bossBtn,
-                borderColor: "#ffb000",
-                color: "#ffb000",
+                borderColor: "#C0A060",
+                color: "#C0A060",
                 marginTop: 20,
               }}
             >
@@ -1454,17 +3513,17 @@ export default function ErnieGame() {
         </div>
       )}
 
-      {/* NEW RIDDLE SCREEN W/ TIMER */}
       {activeRiddle && (
         <div style={S.bossOverlay}>
+          {/* 🎨 UI TWEAK: Muted colors for riddle window */}
           <div
             style={{
               ...S.bossWindow,
-              borderColor: "#ffb000",
-              background: "#110f00",
+              borderColor: "#C0A060",
+              background: "#1a150a",
             }}
           >
-            <div style={{ ...S.bossHeader, color: "#ffb000" }}>
+            <div style={{ ...S.bossHeader, color: "#C0A060" }}>
               ПРОТОКОЛ ЭРНИ
             </div>
             {!riddleVerdict ? (
@@ -1473,15 +3532,17 @@ export default function ErnieGame() {
                   style={{
                     width: "100%",
                     height: 4,
-                    background: "#222",
+                    background: "#332a1a",
                     marginBottom: 15,
                   }}
                 >
                   <div
                     style={{
-                      width: `${riddleTimer * 10}%`,
+                      width: `${
+                        (riddleTimer / (10 + karmamod.timerBonus)) * 100
+                      }%`,
                       height: "100%",
-                      background: riddleTimer < 3 ? "red" : "#ffb000",
+                      background: riddleTimer < 3 ? "#A64444" : "#C0A060",
                       transition: "width 0.1s linear",
                     }}
                   />
@@ -1490,12 +3551,14 @@ export default function ErnieGame() {
                   style={{
                     padding: 20,
                     textAlign: "center",
-                    color: "#ffb000",
+                    color: "#C0A060",
                     fontFamily: "monospace",
                     fontSize: 12,
                   }}
                 >
-                  {activeRiddle.q}
+                  {karmamod.ernieLies && Math.random() < 0.5
+                    ? "ЭТО НЕ ТОТ ВОПРОС"
+                    : activeRiddle.q}
                 </div>
                 <div
                   style={{
@@ -1511,8 +3574,8 @@ export default function ErnieGame() {
                       onClick={() => handleRiddleAnswer(opt.correct)}
                       style={{
                         ...S.bossBtn,
-                        borderColor: "#664400",
-                        color: "#ffb000",
+                        borderColor: "#8c734b",
+                        color: "#C0A060",
                       }}
                     >
                       {opt.text}
@@ -1524,7 +3587,7 @@ export default function ErnieGame() {
               <div style={{ textAlign: "center" }}>
                 <div
                   style={{
-                    color: riddleVerdict === "win" ? "#0f0" : "red",
+                    color: riddleVerdict === "win" ? "#4a7a4a" : "#A64444",
                     fontSize: 18,
                     marginBottom: 10,
                   }}
@@ -1538,6 +3601,8 @@ export default function ErnieGame() {
                   onClick={() => {
                     setActiveRiddle(null);
                     setRiddleVerdict(null);
+                    setCallsCompleted((prev) => [...prev, floor]);
+                    if (introPhase === 5) setIntroPhase(6);
                   }}
                   style={S.shopItem}
                 >
@@ -1552,7 +3617,8 @@ export default function ErnieGame() {
       {showMerchant && (
         <div style={S.bossOverlay}>
           <div style={S.bossWindow}>
-            <div style={{ ...S.bossHeader, color: "#00FF00" }}>
+            {/* 🎨 UI TWEAK: Muted green for merchant header */}
+            <div style={{ ...S.bossHeader, color: "#66AA66" }}>
               ТОРГОВЫЙ ТЕРМИНАЛ
             </div>
             <div
@@ -1652,7 +3718,7 @@ export default function ErnieGame() {
                   style={{
                     width: `${(bossData.hp / bossData.maxHp) * 100}%`,
                     height: "100%",
-                    background: "red",
+                    background: "#A64444",
                   }}
                 />
               </div>
@@ -1669,13 +3735,14 @@ export default function ErnieGame() {
                 >
                   АТАКА (10)
                 </button>
+                {/* 🎨 UI TWEAK: Muted cyan for hack button */}
                 <button
                   onClick={() => combatAction("hack")}
                   disabled={energy < 15}
                   style={{
                     ...S.bossBtn,
-                    borderColor: "#00FFFF",
-                    color: "#00FFFF",
+                    borderColor: "#44AAAA",
+                    color: "#44AAAA",
                     opacity: energy < 15 ? 0.5 : 1,
                   }}
                 >
@@ -1716,7 +3783,7 @@ export default function ErnieGame() {
       {isGlitchActive && (
         <div style={S.glitchOverlay}>
           <div style={S.glitchWindow}>
-            <div style={S.glitchHeader}>⚠ SYSTEM FAILURE ⚠</div>
+            <div style={S.glitchHeader}>⚠️ SYSTEM FAILURE ⚠</div>
             <div style={S.glitchBody}>
               <img
                 src={IMG.GHOST_GIF}
@@ -1770,6 +3837,81 @@ export default function ErnieGame() {
             </div>
           </div>
         )}
+
+      {showNoLives && (
+        <div style={S.overlay}>
+          <div
+            style={{
+              width: "85%",
+              background: "#1a1a1a",
+              border: "2px solid #8B0000",
+              borderRadius: 8,
+              padding: 30,
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 48, marginBottom: 20 }}>💀</div>
+            <div
+              style={{
+                fontSize: 18,
+                color: "#E94560",
+                fontWeight: "bold",
+                marginBottom: 15,
+              }}
+            >
+              БАШНЯ ЗАКРЫТА
+            </div>
+            <div style={{ fontSize: 12, color: "#ccc", marginBottom: 20 }}>
+              У тебя закончились жизни.
+            </div>
+            <div style={{ marginBottom: 25 }}>
+              <div style={{ fontSize: 10, color: "#666", marginBottom: 8 }}>
+                Следующая жизнь через:
+              </div>
+              <LivesTimer />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(233,69,96,0.3), rgba(233,69,96,0.5))",
+                  border: "2px solid #E94560",
+                  color: "#E94560",
+                  padding: 15,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                ⭐ ПРОДОЛЖИТЬ (1 Star)
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: "#999",
+                    marginTop: 5,
+                    fontWeight: "normal",
+                  }}
+                >
+                  Telegram Stars (скоро)
+                </div>
+              </button>
+              <button
+                onClick={() => setShowNoLives(false)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #444",
+                  color: "#888",
+                  padding: 12,
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                ЗАКРЫТЬ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showArchitect && (
         <div
@@ -2019,6 +4161,149 @@ export default function ErnieGame() {
         </div>
       )}
 
+      {showMenu && (
+        <div
+          style={S.overlay}
+          onClick={() => {
+            setShowMenu(false);
+            playSound("click");
+          }}
+        >
+          <div style={S.menuContainer} onClick={(e) => e.stopPropagation()}>
+            <div style={S.menuHeader}>📍 МЕНЮ</div>
+            <div style={S.menuGrid}>
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowBag(true);
+                }}
+                style={S.menuItem}
+              >
+                🎒 СУМКА <div style={S.menuBadge}>{inventory.length}</div>
+              </button>
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowCardCollection(true);
+                }}
+                style={S.menuItem}
+              >
+                🃏 КАРТЫ <div style={S.menuBadge}>{playerCards.length}/7</div>
+              </button>
+              {/* 🔧 FIX: Relics button now correctly opens the relics screen */}
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowRelics(true);
+                }}
+                style={S.menuItem}
+              >
+                🏆 РЕЛИКВИИ <div style={S.menuBadge}>{relics.length}/6</div>
+              </button>
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowArchitect(true);
+                }}
+                style={S.menuItem}
+              >
+                ⚙️ АПГРЕЙД <div style={S.menuBadge}>{influence}</div>
+              </button>
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowDiary(true);
+                }}
+                style={S.menuItem}
+              >
+                📖 ДНЕВНИК{" "}
+                <div style={S.menuBadge}>
+                  {Object.keys(DIARY_LOGS).filter((f) => floor >= f).length}/6
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowKarmaView(true);
+                }}
+                style={S.menuItem}
+              >
+                ⚖️ КАРМА{" "}
+                <div style={S.menuBadge}>
+                  {karma > 0 ? "+" : ""}
+                  {karma}
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowAchievements(true);
+                }}
+                style={S.menuItem}
+              >
+                🏅 НАГРАДЫ{" "}
+                <div style={S.menuBadge}>
+                  {achievements.length}/{ACHIEVEMENTS_DB.length}
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowFloors(true);
+                }}
+                style={S.menuItem}
+              >
+                🗺️ КАРТА <div style={S.menuBadge}>{floor}/50</div>
+              </button>
+              <button
+                onClick={() => {
+                  toggleMute();
+                }}
+                style={S.menuItem}
+              >
+                {muted ? "🔕" : "🔔"} ЗВУК{" "}
+                <div style={S.menuBadge}>{muted ? "ВЫКЛ" : "ВКЛ"}</div>
+              </button>
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  borderTop: "1px solid #333",
+                  paddingTop: 10,
+                  marginTop: 5,
+                }}
+              >
+                <div style={{ fontSize: 8, color: "#666", marginBottom: 8 }}>
+                  ЗАДАНИЯ:
+                </div>
+                {contracts.map((c) => (
+                  <div
+                    key={c.id}
+                    style={{
+                      fontSize: 9,
+                      color: "#ccc",
+                      marginBottom: 5,
+                      borderLeft: "2px solid #E0C068",
+                      paddingLeft: 8,
+                    }}
+                  >
+                    • {c.text}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setShowMenu(false);
+                playSound("click");
+              }}
+              style={S.closeBagBtn}
+            >
+              ЗАКРЫТЬ
+            </button>
+          </div>
+        </div>
+      )}
+
       {!isGlitchActive &&
         !bossData &&
         !activeEvent &&
@@ -2026,13 +4311,63 @@ export default function ErnieGame() {
         !incomingCall &&
         !isIntroActive && (
           <div style={S.bottomUI}>
-            <div style={S.terminal}>
+            <div
+              style={{
+                background: ernieExpanded
+                  ? "rgba(0,0,0,0.85)"
+                  : "rgba(0,0,0,0.6)",
+                padding: ernieExpanded ? 20 : 12,
+                border: "2px solid #E94560",
+                borderLeft: "4px solid #E94560",
+                marginBottom: 15,
+                minHeight: ernieExpanded ? 100 : 50,
+                transition: "all 0.3s ease",
+                position: "relative",
+                animation: ernieExpanded
+                  ? "ernieSlideIn 0.3s ease-out"
+                  : "none",
+              }}
+            >
               <div
-                style={{ color: "#E94560", fontSize: 8, fontWeight: "bold" }}
+                style={{
+                  color: "#E94560",
+                  fontSize: 8,
+                  fontWeight: "bold",
+                  marginBottom: ernieExpanded ? 8 : 4,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
               >
-                ERNIE
+                <span>ERNIE</span>
+                <span style={{ color: MOOD_COLORS[mood], fontSize: 7 }}>
+                  {mood.toUpperCase()}
+                </span>
               </div>
-              <div style={{ color: "#ccc", fontSize: 12 }}>{displayed}</div>
+              <div
+                style={{
+                  color: "#ccc",
+                  fontSize: ernieExpanded ? 12 : 10,
+                  lineHeight: ernieExpanded ? 1.4 : 1.2,
+                }}
+              >
+                {displayed}
+              </div>
+              {done && ernieExpanded && (
+                <div
+                  onClick={() => setErnieExpanded(false)}
+                  style={{
+                    position: "absolute",
+                    bottom: 5,
+                    right: 10,
+                    fontSize: 8,
+                    color: "#666",
+                    cursor: "pointer",
+                  }}
+                >
+                  [свернуть]
+                </div>
+              )}
             </div>
             {done && phase === "floor" && (
               <div
@@ -2043,102 +4378,74 @@ export default function ErnieGame() {
                     display: "flex",
                     gap: 5,
                     justifyContent: "flex-end",
-                    opacity: 0.5,
+                    opacity: 0.3,
                   }}
                 >
                   <button
                     onClick={debugJump}
-                    style={{ ...S.debugBtn, color: "#00FFFF" }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#00FFFF",
+                      fontSize: 8,
+                      cursor: "pointer",
+                    }}
                   >
                     JUMP
                   </button>
                   <button
                     onClick={resetGame}
-                    style={{ ...S.debugBtn, color: "red" }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "red",
+                      fontSize: 8,
+                      cursor: "pointer",
+                    }}
                   >
                     RESET
                   </button>
                 </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button
-                    onClick={() => {
-                      setShowBag(true);
-                      playSound("click");
-                    }}
-                    style={S.bagBtn}
-                  >
-                    СУМКА [{inventory.length}]
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowRelics(true);
-                      playSound("click");
-                    }}
-                    style={S.bagBtn}
-                  >
-                    РЕЛИКВИИ
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowArchitect(true);
-                      playSound("click");
-                    }}
-                    style={S.bagBtn}
-                  >
-                    АПГРЕЙД
-                  </button>
-                </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button
-                    onClick={() => {
-                      setShowDiary(true);
-                      playSound("click");
-                    }}
-                    style={S.bagBtn}
-                  >
-                    ДНЕВНИК
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowKarmaView(true);
-                      playSound("click");
-                    }}
-                    style={{ ...S.bagBtn, position: "relative" }}
-                  >
-                    КАРМА
-                    {karmaFlash && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: -20,
-                          right: 0,
-                          color: karmaFlash === "pos" ? "#00FF00" : "#FF0000",
-                          fontWeight: "bold",
-                          animation: "fadeOutUp 1.5s forwards",
-                        }}
-                      >
-                        {karmaFlash === "pos" ? "+K" : "-K"}
-                      </div>
-                    )}
-                  </button>
-                  <button
-                    onClick={toggleMute}
-                    style={{ ...S.bagBtn, color: muted ? "red" : "#666" }}
-                  >
-                    {muted ? "🔕" : "🔔"}
-                  </button>
-                </div>
                 <button
-                  onClick={ascend}
+                  onClick={() => {
+                    setErnieExpanded(true);
+                    ascend();
+                  }}
                   disabled={!canAscend}
-                  style={canAscend ? S.mainBtn : S.disBtn}
+                  style={{
+                    width: "100%",
+                    padding: canAscend ? 24 : 16,
+                    background: canAscend
+                      ? "linear-gradient(135deg, rgba(166,68,68,0.3), rgba(233,69,96,0.5))"
+                      : "transparent",
+                    border: canAscend ? "2px solid #E94560" : "2px solid #333",
+                    color: canAscend ? "#E94560" : "#333",
+                    fontWeight: "bold",
+                    fontSize: canAscend ? 18 : 14,
+                    letterSpacing: 2,
+                    cursor: canAscend ? "pointer" : "not-allowed",
+                    boxShadow: canAscend
+                      ? "0 0 20px rgba(233,69,96,0.3)"
+                      : "none",
+                    transition: "all 0.3s ease",
+                    textShadow: canAscend ? "0 0 10px #E94560" : "none",
+                  }}
                 >
-                  ▲ ПОДЪЁМ
+                  {canAscend ? "▲ ПОДЪЁМ" : "✗ НЕТ ЭНЕРГИИ"}
                 </button>
                 <button
                   onClick={handleRisk}
                   disabled={!canRisk}
-                  style={canRisk ? S.subBtn : S.disSub}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    background: "transparent",
+                    border: canRisk ? "1px solid #666" : "1px solid #222",
+                    color: canRisk ? "#999" : "#222",
+                    fontSize: 10,
+                    cursor: canRisk ? "pointer" : "not-allowed",
+                    opacity: canRisk ? 1 : 0.3,
+                  }}
                 >
                   РИСК ({riskUsedThisCycle}/{maxRiskPerCycle})
                 </button>
@@ -2146,6 +4453,11 @@ export default function ErnieGame() {
             )}
           </div>
         )}
+
+      {/* --- PATCH v220: ENDING RENDERING --- */}
+      {showEnding && endingType === "light" && <LightEnding />}
+      {showEnding && endingType === "gray" && <GrayEnding />}
+      {showEnding && endingType === "dark" && <DarkEnding />}
     </div>
   );
 }
@@ -2212,14 +4524,15 @@ const S = {
     alignItems: "center",
     justifyContent: "center",
   },
+  /* 🎨 UI TWEAK: Muted red for boss window styles */
   bossWindow: {
     width: "90%",
-    border: "2px solid red",
-    background: "#050000",
+    border: "2px solid #A64444",
+    background: "#1a0a0a",
     padding: 10,
   },
   bossHeader: {
-    color: "red",
+    color: "#A64444",
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 10,
@@ -2236,12 +4549,13 @@ const S = {
     color: "#ccc",
     fontFamily: "monospace",
   },
+  /* 🎨 UI TWEAK: Muted red for boss buttons */
   bossBtn: {
     flex: 1,
     padding: 15,
     background: "transparent",
-    border: "1px solid red",
-    color: "red",
+    border: "1px solid #A64444",
+    color: "#A64444",
     fontWeight: "bold",
     cursor: "pointer",
   },
@@ -2298,7 +4612,8 @@ const S = {
     padding: 20,
     textAlign: "center",
     color: "#fff",
-  },
+    margin: "0 auto",
+  }, // Added margin auto for centering
   keyItemBtn: {
     width: "100%",
     padding: "12px",
@@ -2360,8 +4675,9 @@ const S = {
     bottom: 0,
     left: 0,
     right: 0,
-    padding: "20px",
-    background: "linear-gradient(to top, #000, transparent)",
+    padding: "15px 20px 20px 20px",
+    background:
+      "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 70%, transparent 100%)",
     zIndex: 50,
   },
   terminal: {
@@ -2547,4 +4863,45 @@ const S = {
     flexDirection: "column",
     alignItems: "center",
   },
+
+  menuContainer: {
+    width: "90%",
+    maxWidth: 380,
+    background: "#1a1a1a",
+    border: "2px solid #444",
+    borderRadius: 8,
+    padding: 20,
+    maxHeight: "80vh",
+    overflow: "auto",
+  },
+  menuHeader: {
+    color: "#E94560",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 20,
+    textAlign: "center",
+    letterSpacing: 2,
+  },
+  menuGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+    marginBottom: 20,
+  },
+  menuItem: {
+    background: "#222",
+    border: "1px solid #444",
+    color: "#ccc",
+    padding: 15,
+    fontSize: 11,
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    transition: "all 0.2s ease",
+    position: "relative",
+  },
+  menuBadge: { fontSize: 9, color: "#E0C068", fontWeight: "bold" },
 };
